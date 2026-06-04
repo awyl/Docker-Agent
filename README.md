@@ -59,6 +59,7 @@ Use the helper script:
 |------|---------|---------|
 | `-c CONFIG_DIR` | Claude config dir mounted to `/home/dev/.claude` | `~/.claude` |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
+| `-n NAME` | Reuse a persistent named container instead of a throwaway one | — |
 | `-- …` | Everything after `--` is passed to `claude` | — |
 
 Examples:
@@ -67,8 +68,23 @@ Examples:
 ./run-claude.sh                                   # host config + current dir
 ./run-claude.sh -w ~/code/myproj                  # a different repo
 ./run-claude.sh -c ~/.claude-sandbox -w /tmp/x    # throwaway config + repo
+./run-claude.sh -n myproj                         # create/reuse "myproj"
 ./run-claude.sh -- --version                      # pass args through to claude
 ```
+
+### Named (persistent) containers
+
+By default each run uses a throwaway container (`--rm`, gone on exit). With
+`-n NAME` the container persists and is reused:
+
+- **First call** with a name creates an idle container (it runs `sleep
+  infinity` in the background) with the mounts from `-c`/`-w`, then execs
+  `claude` into it.
+- **Later calls** with the same name re-enter that same container — no second
+  container is created.
+- Because mounts are fixed when the container is created, `-c`/`-w` only take
+  effect on the first call. Remove it with `docker rm -f NAME` to recreate with
+  new mounts.
 
 ### What gets mounted
 
