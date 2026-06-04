@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1
+#
+# Claude Code runner, built on the agentic-dev-base.
+# Build the base first:   docker build -t agentic-dev-base:latest .
+#
+# Codebase + Claude config are bind-mounted at RUN time (not baked in):
+#   - host repo      -> /work
+#   - host ~/.claude -> /home/dev/.claude
+#   - host ~/.claude.json -> /home/dev/.claude.json
+#
+# UID/GID are build args so files written into the mounted config/repo
+# stay owned by your host user (no root-owned droppings).
+
+FROM agentic-dev-base:latest
+
+ARG UID=1000
+ARG GID=1000
+
+# Claude Code CLI + ccstatusline (host settings.json references it as statusLine).
+RUN set -eux; \
+    npm install -g @anthropic-ai/claude-code ccstatusline; \
+    npm cache clean --force; \
+    rm -rf /root/.npm /tmp/*
+
+# rtk: the token-compressing proxy your settings.json PreToolUse(Bash) hook calls
+# (`rtk hook claude`). Built from source — the host binary is Nix-glibc linked and
+# won't run on Debian. Pinned to the version you run on the host.
+ARG RTK_TAG=v0.42.0
+RUN set -eux; \
+    cargo install --locked --git https://github.com/rtk-ai/rtk --tag "${RTK_TAG}"; \
+    cp /usr/local/cargo/bin/rtk /usr/local/bin/rtk; \
+    rm -rf /usr/local/cargo/registry /usr/local/cargo/git /tmp/*; \
+    rtk --version
+
+# Non-root user whose UID/GID match the host owner of the mounted files.
+RUN set -eux; \
+    groupadd -g "${GID}" dev 2>/dev/null || true; \
+    useradd -m -u "${UID}" -g "${GID}" -s /bin/bash dev
+
+USER dev
+ENV HOME=/home/dev
+WORKDIR /work
+
+# claude is the entrypoint; extra args from `docker run` are appended.
+# e.g.  docker run ... agentic-claude --version
+ENTRYPOINT ["claude"]
