@@ -63,9 +63,40 @@ Build args:
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
 - `RTK_TAG` — rtk release tag to compile (default `v0.42.0`), `Dockerfile.claude` only.
 
+## Install (optional)
+
+To run the helper scripts from any directory, symlink them onto your `PATH`:
+
+```bash
+./install.sh        # symlinks into ~/.local/bin (override with BIN=...)
+```
+
+This creates:
+
+| Command | Script |
+|---------|--------|
+| `agent-claude` | `run-claude.sh` |
+| `agent-pi` | `run-pi.sh` |
+| `agent-goose` | `run-goose.sh` |
+
+Then, from anywhere:
+
+```bash
+cd ~/code/myproj && agent-claude
+```
+
+The commands are **symlinks**, so editing a `run-*.sh` in the repo updates the
+installed command immediately; moving or deleting the repo breaks the links.
+`./install.sh` only puts the scripts on `PATH` — the images must already be
+built (see **Build**). Remove the links with `./uninstall.sh`.
+
+If `~/.local/bin` isn't on your `PATH`, `install.sh` prints how to add it
+(`fish_add_path ~/.local/bin` for fish).
+
 ## Run
 
-One helper script per agent — same flags, different defaults:
+One helper script per agent — same flags, different defaults. Run them in place
+with `./run-<agent>.sh`, or as `agent-<agent>` after `./install.sh`:
 
 | Script | Agent | Default config mount |
 |--------|-------|----------------------|
