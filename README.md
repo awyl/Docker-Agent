@@ -1,9 +1,14 @@
 # Docker-Agent
 
-Two Docker images for agentic development:
+Docker images for agentic development:
 
 1. **`agentic-dev-base`** — a language/tooling base image (Rust, Node.js, Bun, Python3, plus the common Unix toolkit).
-2. **`agentic-claude`** — the base image plus the Claude Code CLI as its entrypoint, designed to run against a bind-mounted codebase and a bind-mounted Claude config.
+2. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
+3. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
+4. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
+
+Each agent image runs against a bind-mounted codebase and a bind-mounted config
+dir, as a non-root `dev` user whose UID/GID match the host owner of mounted files.
 
 ## Contents
 
@@ -28,7 +33,15 @@ Adds, on top of the base:
 - `ccstatusline` — referenced by the host `settings.json` status line.
 - `rtk` — the token-compressing proxy invoked by the host `PreToolUse(Bash)` hook (`rtk hook claude`). Built from source, pinned via the `RTK_TAG` build arg.
 
-Runs as a non-root `dev` user whose UID/GID are set at build time to match the host owner of mounted files (no root-owned droppings).
+### `agentic-pi`
+
+Adds `@earendil-works/pi-coding-agent` (binary `pi`) on top of the base.
+
+### `agentic-goose`
+
+Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
+so it uses file-based secrets (`~/.config/goose/secrets.yaml`) instead of a
+system keyring, which doesn't exist in a container.
 
 ## Build
 
@@ -36,31 +49,43 @@ Runs as a non-root `dev` user whose UID/GID are set at build time to match the h
 # 1. Base image
 docker build -t agentic-dev-base:latest .
 
-# 2. Claude image (UID/GID match your host user)
+# 2. Agent images (UID/GID match your host user)
 docker build -f Dockerfile.claude \
-  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
-  -t agentic-claude:latest .
+  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-claude:latest .
+docker build -f Dockerfile.pi \
+  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-pi:latest .
+docker build -f Dockerfile.goose \
+  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-goose:latest .
 ```
 
-Optional build args for `Dockerfile.claude`:
+Build args:
 
-- `RTK_TAG` — rtk release tag to compile (default `v0.42.0`).
-- `UID` / `GID` — owner of mounted files (default `1000`).
+- `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
+- `RTK_TAG` — rtk release tag to compile (default `v0.42.0`), `Dockerfile.claude` only.
 
 ## Run
 
-Use the helper script:
+One helper script per agent — same flags, different defaults:
+
+| Script | Agent | Default config mount |
+|--------|-------|----------------------|
+| `./run-claude.sh` | Claude Code | `~/.claude` (+ `~/.claude.json`) |
+| `./run-pi.sh` | Pi | `~/.pi` |
+| `./run-goose.sh` | goose | `~/.config/goose` |
 
 ```bash
-./run-claude.sh [-c CONFIG_DIR] [-w WORK_DIR] [-- <claude args>]
+./run-claude.sh [-c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <agent args>]
 ```
 
 | Flag | Meaning | Default |
 |------|---------|---------|
-| `-c CONFIG_DIR` | Claude config dir mounted to `/home/dev/.claude` | `~/.claude` |
+| `-c CONFIG_DIR` | Agent config dir mounted into the container | agent's default above |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
 | `-n NAME` | Reuse a persistent named container instead of a throwaway one | — |
-| `-- …` | Everything after `--` is passed to `claude` | — |
+| `-- …` | Everything after `--` is passed to the agent | — |
+
+`run-pi.sh` and `run-goose.sh` take the same flags. `run-goose.sh` with no
+extra args starts an interactive `goose session`.
 
 Examples:
 
