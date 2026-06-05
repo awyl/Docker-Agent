@@ -7,6 +7,7 @@
 #   run-claude.sh -> agent-claude
 #   run-pi.sh     -> agent-pi
 #   run-goose.sh  -> agent-goose
+#   run-hermes.sh -> agent-hermes
 #
 # Usage:
 #   ./install.sh            # symlink into ~/.local/bin
@@ -25,6 +26,7 @@ links=(
   "run-claude.sh:agent-claude"
   "run-pi.sh:agent-pi"
   "run-goose.sh:agent-goose"
+  "run-hermes.sh:agent-hermes"
 )
 
 installed=()

@@ -6,6 +6,7 @@ Docker images for agentic development:
 2. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
 3. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
 4. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
+5. **`agentic-hermes`** — base + the [Hermes agent](https://github.com/NousResearch/hermes-agent) as entrypoint.
 
 Each agent image runs against a bind-mounted codebase and a bind-mounted config
 dir, as a non-root `dev` user whose UID/GID match the host owner of mounted files.
@@ -43,6 +44,15 @@ Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
 so it uses file-based secrets (`~/.config/goose/secrets.yaml`) instead of a
 system keyring, which doesn't exist in a container.
 
+### `agentic-hermes`
+
+Adds the [Hermes agent](https://github.com/NousResearch/hermes-agent) (binary
+`hermes`) on top of the base. Hermes is a Python app, so it's installed into an
+isolated venv at `/opt/hermes` (Python 3.11 via `uv`, with the `.[all]` extra
+and `ffmpeg`) and the launcher is symlinked onto the global `PATH`. The venv is
+kept out of `~/.hermes` because that dir is the runtime-mounted config. Pin the
+clone with the `HERMES_REF` build arg (default `main`).
+
 ## Build
 
 ```bash
@@ -56,12 +66,15 @@ docker build -f Dockerfile.pi \
   --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-pi:latest .
 docker build -f Dockerfile.goose \
   --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-goose:latest .
+docker build -f Dockerfile.hermes \
+  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-hermes:latest .
 ```
 
 Build args:
 
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
 - `RTK_TAG` — rtk release tag to compile (default `v0.42.0`), `Dockerfile.claude` only.
+- `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
 ## Install (optional)
 
@@ -78,6 +91,7 @@ This creates:
 | `agent-claude` | `run-claude.sh` |
 | `agent-pi` | `run-pi.sh` |
 | `agent-goose` | `run-goose.sh` |
+| `agent-hermes` | `run-hermes.sh` |
 
 Then, from anywhere:
 
@@ -103,6 +117,7 @@ with `./run-<agent>.sh`, or as `agent-<agent>` after `./install.sh`:
 | `./run-claude.sh` | Claude Code | `~/.claude` (+ `~/.claude.json`) |
 | `./run-pi.sh` | Pi | `~/.pi` |
 | `./run-goose.sh` | goose | `~/.config/goose` |
+| `./run-hermes.sh` | Hermes | `~/.hermes` |
 
 ```bash
 ./run-claude.sh [-c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <agent args>]
@@ -115,8 +130,9 @@ with `./run-<agent>.sh`, or as `agent-<agent>` after `./install.sh`:
 | `-n NAME` | Reuse a persistent named container instead of a throwaway one | — |
 | `-- …` | Everything after `--` is passed to the agent | — |
 
-`run-pi.sh` and `run-goose.sh` take the same flags. `run-goose.sh` with no
-extra args starts an interactive `goose session`.
+`run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags.
+`run-goose.sh` with no extra args starts an interactive `goose session`;
+`run-hermes.sh` with no args starts the interactive Hermes CLI.
 
 Examples:
 

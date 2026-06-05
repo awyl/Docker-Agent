@@ -12,7 +12,7 @@ set -euo pipefail
 SRC="$(cd "$(dirname "$0")" && pwd)"
 BIN="${BIN:-$HOME/.local/bin}"
 
-cmds=(agent-claude agent-pi agent-goose)
+cmds=(agent-claude agent-pi agent-goose agent-hermes)
 
 for cmd in "${cmds[@]}"; do
   link="$BIN/$cmd"
