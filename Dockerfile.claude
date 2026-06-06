@@ -32,6 +32,12 @@ RUN set -eux; \
 
 USER dev
 ENV HOME=/home/dev
+
+# Bake the host's ccstatusline appearance config into the image. It lives
+# outside ~/.claude, so the runtime config-dir mount doesn't cover it; baking it
+# here makes every container's statusline match the host without a bind mount.
+COPY --chown=${UID}:${GID} claude-default-config/ccstatusline/settings.json /home/dev/.config/ccstatusline/settings.json
+
 WORKDIR /work
 
 # claude is the entrypoint; extra args from `docker run` are appended.
