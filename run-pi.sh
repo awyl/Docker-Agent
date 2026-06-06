@@ -2,21 +2,25 @@
 # Run the Pi coding agent in a container.
 #
 # Usage:
-#   run-pi.sh [-c CONFIG_DIR | -i] [-w WORK_DIR] [-n NAME] [-- <pi args>]
+#   run-pi.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <pi args>]
 #
-#   -c CONFIG_DIR   Pi config dir to mount        (default: ~/.pi)
-#   -i              Isolated per-project, per-agent config in ~/.docker-agent/<work-dir-name>/pi.
+#   (default)       Isolated per-project, per-agent config in ~/.docker-agent/<work-dir-name>/pi.
 #                   Fresh config (no host extensions); auth.json is seeded from
-#                   ~/.pi so pi stays logged in. Mutually exclusive with -c.
+#                   ~/.pi so pi stays logged in, and the bundled default config
+#                   (pi-default-config/) is seeded if the dir has none.
+#   -i              Force the isolated config (this is the default; explicit form).
+#   -H              Use the host config dir (~/.pi) directly.
+#   -c CONFIG_DIR   Use a custom config dir.
+#                   -i, -H and -c are mutually exclusive.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `pi`.
 #
 # Examples:
-#   run-pi.sh                          # throwaway, host config, current dir
-#   run-pi.sh -i                       # isolated config for current dir
-#   run-pi.sh -i -w ~/code/myproj      # isolated config for myproj
-#   run-pi.sh -w ~/code/myproj         # different repo, host config
+#   run-pi.sh                          # isolated config for current dir (default)
+#   run-pi.sh -H                       # host ~/.pi config
+#   run-pi.sh -w ~/code/myproj         # isolated config for myproj
+#   run-pi.sh -c ~/.pi-sandbox         # custom config dir
 #   run-pi.sh -n myproj                # create/reuse "myproj"
 #   run-pi.sh -- --version             # pass args to pi
 #
@@ -26,6 +30,16 @@
 #     --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
 #     -t agentic-pi:latest .
 set -euo pipefail
+
+# Resolve this script's own dir (following symlinks, since install.sh symlinks
+# it onto PATH) so we can find the bundled default config next to it.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [ "${SOURCE#/}" = "$SOURCE" ] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 IMAGE="${IMAGE:-agentic-pi:latest}"
 AGENT_CMD="pi"
@@ -38,6 +52,7 @@ XDG_DATA_DST="$CONFIG_DST/share"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
+HOST=0
 CONFIG_EXPLICIT=0
 
 # Rootless Docker maps the host user to container root, so bind-mounted files
@@ -52,21 +67,26 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-while getopts "c:iw:n:h" opt; do
+while getopts "c:iHw:n:h" opt; do
   case "$opt" in
     c) CONFIG_SRC="$OPTARG"; CONFIG_EXPLICIT=1 ;;
     i) ISOLATE=1 ;;
+    H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,21p' "$0"; exit 0 ;;
+    h) sed -n '2,25p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
 
-if [ "$ISOLATE" -eq 1 ] && [ "$CONFIG_EXPLICIT" -eq 1 ]; then
-  echo "run-pi.sh: -c and -i are mutually exclusive" >&2
+# Isolated config is the default; -H (host) and -c (custom) opt out of it.
+if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
+  echo "run-pi.sh: choose only one of -i, -H, -c" >&2
   exit 2
+fi
+if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
+  ISOLATE=1
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
@@ -83,6 +103,15 @@ if [ "$ISOLATE" -eq 1 ]; then
 fi
 
 mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"
+
+# Seed the bundled default config into a config dir that has none yet
+# (no agent/settings.json). cp -rn never clobbers, so an auth.json seeded
+# above and any existing config survive. Applies to -i, default ~/.pi, and -c.
+DEFAULT_CONFIG="$SCRIPT_DIR/pi-default-config"
+if [ ! -e "$CONFIG_SRC/agent/settings.json" ] && [ -d "$DEFAULT_CONFIG/agent" ]; then
+  mkdir -p "$CONFIG_SRC/agent"
+  cp -rn "$DEFAULT_CONFIG/agent/." "$CONFIG_SRC/agent/"
+fi
 
 # --- Named container: a persistent sandbox we exec the agent into ---
 if [ -n "$NAME" ]; then

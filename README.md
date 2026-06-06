@@ -42,6 +42,14 @@ image inherit it.
 
 Adds `@earendil-works/pi-coding-agent` (binary `pi`) on top of the base.
 
+The repo ships a default Pi config in `pi-default-config/` (plugin list,
+keybindings, caveman + magic-context settings, the `rtk` extension). `run-pi.sh`
+seeds it into any config dir that has no config yet — i.e. lacks
+`agent/settings.json` — covering `-i` isolated, the default `~/.pi`, and custom
+`-c` dirs. Existing config is never overwritten (it copies no-clobber, so a
+seeded `auth.json` survives). Auth, installed npm packages, cloned plugin git
+repos, sessions, and runtime DBs are intentionally excluded from the bundle.
+
 ### `agentic-goose`
 
 Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
@@ -116,23 +124,32 @@ If `~/.local/bin` isn't on your `PATH`, `install.sh` prints how to add it
 One helper script per agent — same flags, different defaults. Run them in place
 with `./run-<agent>.sh`, or as `agent-<agent>` after `./install.sh`:
 
-| Script | Agent | Default config mount |
-|--------|-------|----------------------|
+By default each script uses an **isolated** per-project config dir; the host
+config dir below is used only with `-H`:
+
+| Script | Agent | Host config dir (`-H`) |
+|--------|-------|------------------------|
 | `./run-claude.sh` | Claude Code | `~/.claude` (+ `~/.claude.json`) |
 | `./run-pi.sh` | Pi | `~/.pi` |
 | `./run-goose.sh` | goose | `~/.config/goose` |
 | `./run-hermes.sh` | Hermes | `~/.hermes` |
 
 ```bash
-./run-claude.sh [-c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <agent args>]
+./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <agent args>]
 ```
 
 | Flag | Meaning | Default |
 |------|---------|---------|
-| `-c CONFIG_DIR` | Agent config dir mounted into the container | agent's default above |
+| _(none)_ | Isolated per-project config in `~/.docker-agent/<work-dir-name>/<agent>`, seeded from the host so it stays logged in | **the default** |
+| `-i` | Force the isolated config (explicit form of the default) | — |
+| `-H` | Use the host config dir directly (the agent default in the table above) | — |
+| `-c CONFIG_DIR` | Use a custom config dir | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
 | `-n NAME` | Reuse a persistent named container instead of a throwaway one | — |
 | `-- …` | Everything after `--` is passed to the agent | — |
+
+`-i`, `-H` and `-c` are mutually exclusive. Each invocation defaults to an
+isolated, per-project config dir; pass `-H` to use your live host config instead.
 
 `run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags.
 `run-goose.sh` with no extra args starts an interactive `goose session`;
@@ -141,9 +158,10 @@ with `./run-<agent>.sh`, or as `agent-<agent>` after `./install.sh`:
 Examples:
 
 ```bash
-./run-claude.sh                                   # host config + current dir
-./run-claude.sh -w ~/code/myproj                  # a different repo
-./run-claude.sh -c ~/.claude-sandbox -w /tmp/x    # throwaway config + repo
+./run-claude.sh                                   # isolated config + current dir (default)
+./run-claude.sh -H                                # host ~/.claude config
+./run-claude.sh -w ~/code/myproj                  # isolated config, a different repo
+./run-claude.sh -c ~/.claude-sandbox -w /tmp/x    # custom config + repo
 ./run-claude.sh -n myproj                         # create/reuse "myproj"
 ./run-claude.sh -- --version                      # pass args through to claude
 ```
@@ -191,12 +209,14 @@ context-mode hooks/MCP server.
 
 ## Notes & caveats
 
-- **Credentials exposure.** Mounting `~/.claude` shares your live Claude
-  credentials (`~/.claude/.credentials.json`) with the container. Any code the
-  agent runs inside can read them. Use a separate config dir (`-c`) or an API
-  key if you want isolation.
+- **Credentials exposure.** The default isolated config is *seeded* with a copy
+  of your host credentials (e.g. `~/.claude/.credentials.json`) so the agent
+  stays logged in — that copy lives in `~/.docker-agent/<proj>/<agent>` and any
+  code the agent runs can read it. `-H` exposes the live host credentials
+  directly. Use an API key if you want no credential material in the container.
 - **Trust prompt.** The repo mounts at `/work`, which differs from its host
   path. Claude trusts directories by absolute path, so the first run shows a
   trust prompt. Accept once — it persists into the mounted config JSON.
-- **Config is shared, not copied.** Edits Claude makes (history, sessions,
-  trust) write back to the host config dir.
+- **Default config is isolated, not shared.** By default each project gets its
+  own config dir, so edits the agent makes (history, sessions, trust) stay
+  per-project. Use `-H` to share — and write back to — your live host config.

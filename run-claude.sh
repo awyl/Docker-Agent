@@ -2,13 +2,16 @@
 # Run Claude Code in a container.
 #
 # Usage:
-#   run-claude.sh [-c CONFIG_DIR | -i] [-w WORK_DIR] [-n NAME] [-- <claude args>]
+#   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <claude args>]
 #
-#   -c CONFIG_DIR   Claude config dir to mount   (default: ~/.claude)
-#   -i              Isolated per-project, per-agent config in
+#   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/claude. Fresh config;
 #                   .credentials.json is seeded from ~/.claude so Claude stays
-#                   logged in. Mutually exclusive with -c.
+#                   logged in.
+#   -i              Force the isolated config (this is the default; explicit form).
+#   -H              Use the host config dir (~/.claude) directly.
+#   -c CONFIG_DIR   Use a custom config dir.
+#                   -i, -H and -c are mutually exclusive.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container. First call creates it;
 #                   later calls with the same NAME re-enter the same container
@@ -17,10 +20,10 @@
 #   anything after the options is passed through to `claude`.
 #
 # Examples:
-#   run-claude.sh                                  # throwaway, host config, cwd
-#   run-claude.sh -i                               # isolated config for cwd
-#   run-claude.sh -w ~/code/myproj                 # different repo
-#   run-claude.sh -c ~/.claude-sandbox -w /tmp/x   # throwaway config + repo
+#   run-claude.sh                                  # isolated config for cwd (default)
+#   run-claude.sh -H                               # host ~/.claude config
+#   run-claude.sh -w ~/code/myproj                 # isolated config, different repo
+#   run-claude.sh -c ~/.claude-sandbox -w /tmp/x   # custom config + repo
 #   run-claude.sh -n myproj                        # create/reuse "myproj"
 #   run-claude.sh -- --version                     # pass args to claude
 #
@@ -36,6 +39,7 @@ CONFIG_DIR="$HOME/.claude"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
+HOST=0
 CONFIG_EXPLICIT=0
 
 # Rootless Docker maps the host user to container root, so bind-mounted files
@@ -50,21 +54,26 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-while getopts "c:iw:n:h" opt; do
+while getopts "c:iHw:n:h" opt; do
   case "$opt" in
     c) CONFIG_DIR="$OPTARG"; CONFIG_EXPLICIT=1 ;;
     i) ISOLATE=1 ;;
+    H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,24p' "$0"; exit 0 ;;
+    h) sed -n '2,28p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
 
-if [ "$ISOLATE" -eq 1 ] && [ "$CONFIG_EXPLICIT" -eq 1 ]; then
-  echo "run-claude.sh: -c and -i are mutually exclusive" >&2
+# Isolated config is the default; -H (host) and -c (custom) opt out of it.
+if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
+  echo "run-claude.sh: choose only one of -i, -H, -c" >&2
   exit 2
+fi
+if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
+  ISOLATE=1
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.

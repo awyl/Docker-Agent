@@ -2,20 +2,23 @@
 # Run the goose agent in a container.
 #
 # Usage:
-#   run-goose.sh [-c CONFIG_DIR | -i] [-w WORK_DIR] [-n NAME] [-- <goose args>]
+#   run-goose.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <goose args>]
 #
-#   -c CONFIG_DIR   goose config dir to mount      (default: ~/.config/goose)
-#   -i              Isolated per-project, per-agent config in
+#   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/goose. Fresh config;
-#                   config.yaml is seeded from the host. Mutually exclusive with -c.
+#                   config.yaml is seeded from the host.
+#   -i              Force the isolated config (this is the default; explicit form).
+#   -H              Use the host config dir (~/.config/goose) directly.
+#   -c CONFIG_DIR   Use a custom config dir.
+#                   -i, -H and -c are mutually exclusive.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `goose`.
 #   With no goose args, an interactive `goose session` is started.
 #
 # Examples:
-#   run-goose.sh                       # throwaway -> goose session, current dir
-#   run-goose.sh -i                    # isolated config for current dir
+#   run-goose.sh                       # isolated config -> goose session (default)
+#   run-goose.sh -H                    # host ~/.config/goose config
 #   run-goose.sh -n myproj             # create/reuse "myproj"
 #   run-goose.sh -- --version          # pass args to goose
 #   run-goose.sh -- configure          # run goose configure
@@ -34,6 +37,7 @@ CONFIG_DST="/home/dev/.config/goose"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
+HOST=0
 CONFIG_EXPLICIT=0
 
 # Rootless Docker maps the host user to container root, so bind-mounted files
@@ -48,21 +52,26 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-while getopts "c:iw:n:h" opt; do
+while getopts "c:iHw:n:h" opt; do
   case "$opt" in
     c) CONFIG_SRC="$OPTARG"; CONFIG_EXPLICIT=1 ;;
     i) ISOLATE=1 ;;
+    H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,21p' "$0"; exit 0 ;;
+    h) sed -n '2,24p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
 
-if [ "$ISOLATE" -eq 1 ] && [ "$CONFIG_EXPLICIT" -eq 1 ]; then
-  echo "run-goose.sh: -c and -i are mutually exclusive" >&2
+# Isolated config is the default; -H (host) and -c (custom) opt out of it.
+if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
+  echo "run-goose.sh: choose only one of -i, -H, -c" >&2
   exit 2
+fi
+if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
+  ISOLATE=1
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.

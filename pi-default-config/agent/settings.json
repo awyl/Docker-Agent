@@ -1,0 +1,14 @@
+{
+  "lastChangelogVersion": "0.78.1",
+  "packages": [
+    "npm:@cortexkit/aft-pi",
+    "npm:pi-intercom",
+    "npm:@juicesharp/rpiv-ask-user-question",
+    "npm:pi-caveman",
+    "npm:@juicesharp/rpiv-todo",
+    "npm:pi-subagents",
+    "git:github.com/obra/superpowers",
+    "npm:pi-slopchop",
+    "npm:@cortexkit/pi-magic-context"
+  ]
+}

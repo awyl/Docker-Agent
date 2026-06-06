@@ -2,21 +2,24 @@
 # Run the Hermes agent in a container.
 #
 # Usage:
-#   run-hermes.sh [-c CONFIG_DIR | -i] [-w WORK_DIR] [-n NAME] [-- <hermes args>]
+#   run-hermes.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <hermes args>]
 #
-#   -c CONFIG_DIR   Hermes config dir to mount     (default: ~/.hermes)
-#   -i              Isolated per-project, per-agent config in
+#   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/hermes. Fresh config; log in
-#                   inside it on first run. Mutually exclusive with -c.
+#                   inside it on first run.
+#   -i              Force the isolated config (this is the default; explicit form).
+#   -H              Use the host config dir (~/.hermes) directly.
+#   -c CONFIG_DIR   Use a custom config dir.
+#                   -i, -H and -c are mutually exclusive.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `hermes`.
 #   With no hermes args, the interactive CLI starts.
 #
 # Examples:
-#   run-hermes.sh                      # throwaway, host config, current dir
-#   run-hermes.sh -i                   # isolated config for current dir
-#   run-hermes.sh -w ~/code/myproj     # different repo
+#   run-hermes.sh                      # isolated config for current dir (default)
+#   run-hermes.sh -H                   # host ~/.hermes config
+#   run-hermes.sh -w ~/code/myproj     # isolated config, different repo
 #   run-hermes.sh -n myproj            # create/reuse "myproj"
 #   run-hermes.sh -- setup             # run the setup wizard
 #
@@ -34,6 +37,7 @@ CONFIG_DST="/home/dev/.hermes"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
+HOST=0
 CONFIG_EXPLICIT=0
 
 # Rootless Docker maps the host user to container root, so bind-mounted files
@@ -48,21 +52,26 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-while getopts "c:iw:n:h" opt; do
+while getopts "c:iHw:n:h" opt; do
   case "$opt" in
     c) CONFIG_SRC="$OPTARG"; CONFIG_EXPLICIT=1 ;;
     i) ISOLATE=1 ;;
+    H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,21p' "$0"; exit 0 ;;
+    h) sed -n '2,24p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
 shift $((OPTIND - 1))
 
-if [ "$ISOLATE" -eq 1 ] && [ "$CONFIG_EXPLICIT" -eq 1 ]; then
-  echo "run-hermes.sh: -c and -i are mutually exclusive" >&2
+# Isolated config is the default; -H (host) and -c (custom) opt out of it.
+if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
+  echo "run-hermes.sh: choose only one of -i, -H, -c" >&2
   exit 2
+fi
+if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
+  ISOLATE=1
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
