@@ -31,6 +31,10 @@ IMAGE="${IMAGE:-agentic-pi:latest}"
 AGENT_CMD="pi"
 CONFIG_SRC="$HOME/.pi"
 CONFIG_DST="/home/dev/.pi"
+# Plugins that store state in $XDG_DATA_HOME (default ~/.local/share, ephemeral
+# here) are redirected under the mounted config dir so they persist. Matches the
+# ENV baked into the image; set explicitly so it holds even on an older image.
+XDG_DATA_DST="$CONFIG_DST/share"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
@@ -86,16 +90,18 @@ if [ -n "$NAME" ]; then
     docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
   else
     docker run -d --name "$NAME" $USER_FLAG \
+      -e "XDG_DATA_HOME=$XDG_DATA_DST" \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
       -v "$WORK_DIR":/work \
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec docker exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
 exec docker run --rm -it $USER_FLAG \
+  -e "XDG_DATA_HOME=$XDG_DATA_DST" \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
   -v "$WORK_DIR":/work \
   -w /work \
