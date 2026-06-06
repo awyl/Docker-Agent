@@ -2,7 +2,7 @@
 # Run the goose agent in a container.
 #
 # Usage:
-#   run-goose.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <goose args>]
+#   run-goose.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <goose args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/goose. Fresh config;
@@ -11,6 +11,7 @@
 #   -H              Use the host config dir (~/.config/goose) directly.
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
+#   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `goose`.
@@ -52,6 +53,17 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
+# Extract the long flag --edit before getopts (which only handles short opts).
+# Stop at `--` so agent passthrough args keep their own --edit, if any.
+EDIT=0
+_args=(); _stop=0
+for _a in "$@"; do
+  [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
+  _args+=("$_a")
+done
+set -- "${_args[@]}"
+
 while getopts "c:iHw:n:h" opt; do
   case "$opt" in
     c) CONFIG_SRC="$OPTARG"; CONFIG_EXPLICIT=1 ;;
@@ -59,7 +71,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,24p' "$0"; exit 0 ;;
+    h) sed -n '2,25p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -88,6 +100,13 @@ if [ "$ISOLATE" -eq 1 ]; then
 fi
 
 mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"
+
+# --edit: open the resolved (now-seeded) host config dir in an editor, then exit.
+if [ "$EDIT" -eq 1 ]; then
+  ED="${VISUAL:-${EDITOR:-}}"
+  [ -z "$ED" ] && { command -v nvim >/dev/null 2>&1 && ED=nvim || ED=vi; }
+  exec $ED "$CONFIG_SRC"
+fi
 
 # No args -> start an interactive session (goose's bare command only prints help).
 if [ "$#" -eq 0 ]; then

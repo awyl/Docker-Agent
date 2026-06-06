@@ -143,7 +143,7 @@ config dir below is used only with `-H`:
 | `./run-hermes.sh` | Hermes | `~/.hermes` |
 
 ```bash
-./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <agent args>]
+./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <agent args>]
 ```
 
 | Flag | Meaning | Default |
@@ -152,12 +152,17 @@ config dir below is used only with `-H`:
 | `-i` | Force the isolated config (explicit form of the default) | — |
 | `-H` | Use the host config dir directly (the agent default in the table above) | — |
 | `-c CONFIG_DIR` | Use a custom config dir | — |
+| `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
 | `-n NAME` | Reuse a persistent named container instead of a throwaway one | — |
 | `-- …` | Everything after `--` is passed to the agent | — |
 
 `-i`, `-H` and `-c` are mutually exclusive. Each invocation defaults to an
 isolated, per-project config dir; pass `-H` to use your live host config instead.
+
+`--edit` resolves and seeds the config dir the script would mount (respecting
+`-i`/`-H`/`-c`), opens it in your editor, and exits without launching a
+container.
 
 `run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags.
 `run-goose.sh` with no extra args starts an interactive `goose session`;

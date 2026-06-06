@@ -2,7 +2,7 @@
 # Run Claude Code in a container.
 #
 # Usage:
-#   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-- <claude args>]
+#   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <claude args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/claude. Fresh config;
@@ -12,6 +12,7 @@
 #   -H              Use the host config dir (~/.claude) directly.
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
+#   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container. First call creates it;
 #                   later calls with the same NAME re-enter the same container
@@ -64,6 +65,17 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
+# Extract the long flag --edit before getopts (which only handles short opts).
+# Stop at `--` so agent passthrough args keep their own --edit, if any.
+EDIT=0
+_args=(); _stop=0
+for _a in "$@"; do
+  [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
+  _args+=("$_a")
+done
+set -- "${_args[@]}"
+
 while getopts "c:iHw:n:h" opt; do
   case "$opt" in
     c) CONFIG_DIR="$OPTARG"; CONFIG_EXPLICIT=1 ;;
@@ -71,7 +83,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,28p' "$0"; exit 0 ;;
+    h) sed -n '2,29p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -110,6 +122,13 @@ CONFIG_JSON="${CONFIG_DIR}.json"; touch "$CONFIG_JSON"
 DEFAULT_CONFIG="$SCRIPT_DIR/claude-default-config"
 if [ ! -e "$CONFIG_DIR/settings.json" ] && [ -d "$DEFAULT_CONFIG/claude" ]; then
   cp -rn "$DEFAULT_CONFIG/claude/." "$CONFIG_DIR/"
+fi
+
+# --edit: open the resolved (now-seeded) host config dir in an editor, then exit.
+if [ "$EDIT" -eq 1 ]; then
+  ED="${VISUAL:-${EDITOR:-}}"
+  [ -z "$ED" ] && { command -v nvim >/dev/null 2>&1 && ED=nvim || ED=vi; }
+  exec $ED "$CONFIG_DIR"
 fi
 
 # --- Named container: a persistent sandbox we exec claude into ---
