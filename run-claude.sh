@@ -112,8 +112,32 @@ if [ "$ISOLATE" -eq 1 ]; then
 fi
 
 mkdir -p "$CONFIG_DIR"; CONFIG_DIR="$(cd "$CONFIG_DIR" && pwd)"
-# Claude keeps a sibling ~/.claude.json file alongside the config dir.
-CONFIG_JSON="${CONFIG_DIR}.json"; touch "$CONFIG_JSON"
+# Claude keeps a sibling ~/.claude.json file alongside the config dir. It must
+# exist as a file before the bind mount, or Docker creates a *directory* there.
+# Claude parses it as JSON, so an empty file (plain `touch`) trips a startup
+# "JSON Parse error: Unexpected EOF" — seed it with {} when missing or empty.
+CONFIG_JSON="${CONFIG_DIR}.json"
+# Claude stores login (oauthAccount/userID) and onboarding state in this sibling
+# file, not in the config dir. A fresh isolated config with an empty {} here
+# would re-prompt for login + theme on every new project, so seed just those
+# keys from the host ~/.claude.json. No project history, MCP servers, or caches
+# are carried over, keeping the per-project config isolated. Falls back to {} if
+# the file already has content, isn't isolated, or python3/host config is absent
+# (an empty file would trip "JSON Parse error: Unexpected EOF" on startup).
+HOST_JSON="$HOME/.claude.json"
+if [ ! -s "$CONFIG_JSON" ]; then
+  if [ "$ISOLATE" -eq 1 ] && [ -s "$HOST_JSON" ] && command -v python3 >/dev/null 2>&1; then
+    HOST_JSON="$HOST_JSON" CONFIG_JSON="$CONFIG_JSON" \
+    SEED_KEYS="oauthAccount userID hasCompletedOnboarding lastOnboardingVersion firstStartTime" \
+    python3 -c 'import json, os
+src = json.load(open(os.environ["HOST_JSON"]))
+keys = os.environ["SEED_KEYS"].split()
+json.dump({k: src[k] for k in keys if k in src}, open(os.environ["CONFIG_JSON"], "w"))' \
+      || printf '{}\n' > "$CONFIG_JSON"
+  else
+    printf '{}\n' > "$CONFIG_JSON"
+  fi
+fi
 
 # Seed the bundled default config into a Claude config dir that has none yet
 # (no settings.json). cp -rn never clobbers, so a seeded .credentials.json and
