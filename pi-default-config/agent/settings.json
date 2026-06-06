@@ -9,6 +9,7 @@
     "npm:pi-subagents",
     "git:github.com/obra/superpowers",
     "npm:pi-slopchop",
-    "npm:@cortexkit/pi-magic-context"
+    "npm:@cortexkit/pi-magic-context",
+    "npm:@aliou/pi-guardrails"
   ]
 }
