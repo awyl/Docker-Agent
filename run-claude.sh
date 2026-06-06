@@ -34,6 +34,16 @@
 #     -t agentic-claude:latest .
 set -euo pipefail
 
+# Resolve this script's own dir (following symlinks, since install.sh symlinks
+# it onto PATH) so we can find the bundled default config next to it.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [ "${SOURCE#/}" = "$SOURCE" ] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
 IMAGE="${IMAGE:-agentic-claude:latest}"
 CONFIG_DIR="$HOME/.claude"
 WORK_DIR="$PWD"
@@ -92,6 +102,15 @@ fi
 mkdir -p "$CONFIG_DIR"; CONFIG_DIR="$(cd "$CONFIG_DIR" && pwd)"
 # Claude keeps a sibling ~/.claude.json file alongside the config dir.
 CONFIG_JSON="${CONFIG_DIR}.json"; touch "$CONFIG_JSON"
+
+# Seed the bundled default config into a Claude config dir that has none yet
+# (no settings.json). cp -rn never clobbers, so a seeded .credentials.json and
+# any existing config survive. Applies to -i, default, and -c; -H's ~/.claude
+# already has a settings.json so it's left untouched.
+DEFAULT_CONFIG="$SCRIPT_DIR/claude-default-config"
+if [ ! -e "$CONFIG_DIR/settings.json" ] && [ -d "$DEFAULT_CONFIG/claude" ]; then
+  cp -rn "$DEFAULT_CONFIG/claude/." "$CONFIG_DIR/"
+fi
 
 # --- Named container: a persistent sandbox we exec claude into ---
 # The container itself idles (sleep infinity); each invocation runs claude via

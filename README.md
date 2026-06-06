@@ -38,6 +38,14 @@ Adds, on top of the base:
 `rtk hook claude`) lives in `agentic-dev-base`, so this and every other agent
 image inherit it.
 
+The repo ships a default Claude config in `claude-default-config/` (model,
+security deny rules, statusline, the `rtk` Bash hook, plugin set + marketplaces).
+`run-claude.sh` seeds it into any config dir that has no config yet — i.e. lacks
+`settings.json` — covering `-i` isolated, the default, and custom `-c` dirs.
+Existing config is never overwritten (it copies no-clobber, so a seeded
+`.credentials.json` survives). Credentials, the context7 MCP server (API key),
+and runtime state are intentionally excluded from the bundle.
+
 ### `agentic-pi`
 
 Adds `@earendil-works/pi-coding-agent` (binary `pi`) on top of the base.
@@ -195,13 +203,20 @@ with `~/.claude.json`, and `~/.claude-sandbox` pairs with `~/.claude-sandbox.jso
 ## Plugins
 
 The Claude image bakes in **no** plugins. They load at runtime from the mounted
-config dir, so the container sees exactly the plugins your host has enabled.
-Currently enabled (in `~/.claude/settings.json`):
+config dir, so the container sees exactly the plugins your host has enabled. A
+fresh isolated config is seeded from `claude-default-config/` (see above), which
+enables (in `settings.json`):
 
 - **superpowers** — skills + SessionStart hook.
 - **caveman** — output-compression mode hooks.
 - **context-mode** — MCP server + tool-routing hooks.
+- **code-simplifier** — code cleanup skill.
 - **rust-analyzer-lsp** — drives the `rust-analyzer` binary baked into the base.
+
+`caveman` and `context-mode` come from GitHub marketplaces declared in the
+seeded `settings.json`; the rest come from the built-in `claude-plugins-official`
+marketplace. context-mode re-deploys its own SessionStart cache-heal hook on
+first run, so the bundle omits it.
 
 Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook),
 `ccstatusline` (status line), `rust-analyzer` (LSP), plus Node for the
