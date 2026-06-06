@@ -66,11 +66,32 @@ RUN set -eux; \
         /usr/share/man/* \
         /tmp/*
 
+# rtk: token-compressing proxy the agent hooks call (e.g. `rtk hook claude`).
+# Prebuilt release binary instead of `cargo install` from source — much faster
+# build, and the x86_64 musl asset is statically linked so it runs regardless of
+# the container's glibc. Pinned; override with --build-arg RTK_TAG=vX.Y.Z.
+# TARGETARCH is set by buildx; falls back to amd64 under a plain `docker build`.
+ARG RTK_TAG=v0.42.0
+ARG TARGETARCH
+RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+        amd64) rtk_triple=x86_64-unknown-linux-musl ;; \
+        arm64) rtk_triple=aarch64-unknown-linux-gnu ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL \
+        "https://github.com/rtk-ai/rtk/releases/download/${RTK_TAG}/rtk-${rtk_triple}.tar.gz" \
+        -o /tmp/rtk.tar.gz; \
+    tar -xzf /tmp/rtk.tar.gz -C /tmp; \
+    install -m 0755 "$(find /tmp -type f -name rtk | head -1)" /usr/local/bin/rtk; \
+    rm -rf /tmp/*; \
+    rtk --version
+
 # Sanity: fail the build if any tool is missing.
 RUN set -eux; \
     rustc --version; cargo --version; clippy-driver --version; rust-analyzer --version; \
     node --version; npm --version; bun --version; \
-    python3 --version; uv --version; \
+    python3 --version; uv --version; rtk --version; \
     git --version; rg --version; fd --version; jq --version; nvim --version | head -1
 
 WORKDIR /work

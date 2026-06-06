@@ -23,6 +23,7 @@ dir, as a non-root `dev` user whose UID/GID match the host owner of mounted file
 | Python | 3.13 (distro) |
 | uv | latest (from `ghcr.io/astral-sh/uv`) |
 | Tooling | `git`, `ripgrep`, `fd`, `jq`, `fzf`, `bat`, `neovim`, `curl`, `wget`, `unzip`, build-essential |
+| `rtk` | token-compressing proxy (prebuilt release binary, pinned via `RTK_TAG`) — shared by every agent |
 
 Image size: ~1.7 GB. Caches, docs, and man pages are stripped to keep it lean.
 
@@ -32,7 +33,10 @@ Adds, on top of the base:
 
 - `@anthropic-ai/claude-code` — the CLI (entrypoint).
 - `ccstatusline` — referenced by the host `settings.json` status line.
-- `rtk` — the token-compressing proxy invoked by the host `PreToolUse(Bash)` hook (`rtk hook claude`). Built from source, pinned via the `RTK_TAG` build arg.
+
+`rtk` (the token-compressing proxy the host `PreToolUse(Bash)` hook calls via
+`rtk hook claude`) lives in `agentic-dev-base`, so this and every other agent
+image inherit it.
 
 ### `agentic-pi`
 
@@ -73,7 +77,7 @@ docker build -f Dockerfile.hermes \
 Build args:
 
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
-- `RTK_TAG` — rtk release tag to compile (default `v0.42.0`), `Dockerfile.claude` only.
+- `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v0.42.0`), base image.
 - `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
 ## Install (optional)

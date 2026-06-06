@@ -22,15 +22,8 @@ RUN set -eux; \
     npm cache clean --force; \
     rm -rf /root/.npm /tmp/*
 
-# rtk: the token-compressing proxy your settings.json PreToolUse(Bash) hook calls
-# (`rtk hook claude`). Built from source — the host binary is Nix-glibc linked and
-# won't run on Debian. Pinned to the version you run on the host.
-ARG RTK_TAG=v0.42.0
-RUN set -eux; \
-    cargo install --locked --git https://github.com/rtk-ai/rtk --tag "${RTK_TAG}"; \
-    cp /usr/local/cargo/bin/rtk /usr/local/bin/rtk; \
-    rm -rf /usr/local/cargo/registry /usr/local/cargo/git /tmp/*; \
-    rtk --version
+# rtk (the token-compressing proxy the `rtk hook claude` PreToolUse hook calls)
+# is installed in agentic-dev-base, so every agent image inherits it.
 
 # Non-root user whose UID/GID match the host owner of the mounted files.
 RUN set -eux; \
