@@ -22,6 +22,14 @@ RUN set -eux; \
     rm -rf /root/.npm /tmp/*; \
     pi --version
 
+# `pi install <plugin>` runs plain `npm install`, and npm 11 added an
+# allow-scripts gate: any dependency with install/postinstall scripts (e.g.
+# better-sqlite3, esbuild) not on the allowlist triggers a `npm approve-scripts`
+# prompt on every install. The container is the sandbox here, and Pi plugins run
+# arbitrary code regardless ("packages run with full system access"), so drop the
+# gate and let install scripts run unattended.
+ENV NPM_CONFIG_DANGEROUSLY_ALLOW_ALL_SCRIPTS=true
+
 # Non-root user whose UID/GID match the host owner of the mounted files.
 RUN set -eux; \
     groupadd -g "${GID}" dev 2>/dev/null || true; \
