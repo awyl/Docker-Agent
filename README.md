@@ -152,7 +152,7 @@ config dir below is used only with `-H`:
 | `./run-hermes.sh` | Hermes | `~/.hermes` |
 
 ```bash
-./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] \
+./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [--del] \
                 [--mem-from | --mem-to] [-- <agent args>]
 ```
 
@@ -163,6 +163,7 @@ config dir below is used only with `-H`:
 | `-H` | Use the host config dir directly (the agent default in the table above) | — |
 | `-c CONFIG_DIR` | Use a custom config dir | — |
 | `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
+| `--del` | Delete this agent's isolated config (`~/.docker-agent/<proj>/<agent>`) for the work dir, then exit — no container. Prompts you to type the project name to confirm. Isolated config only (refuses `-H`/`-c`); prunes the project dir if empty; never touches `~/.docker-agent/gitconfig` | — |
 | `--mem-from` | Copy the work-dir memory **from** host into the config dir, then exit — no container (Claude only) | — |
 | `--mem-to` | Copy the work-dir memory **to** host from the config dir, then exit — no container (Claude only) | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
