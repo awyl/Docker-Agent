@@ -71,6 +71,9 @@ RUN set -eux; \
 # build, and the x86_64 musl asset is statically linked so it runs regardless of
 # the container's glibc. Pinned; override with --build-arg RTK_TAG=vX.Y.Z.
 # TARGETARCH is set by buildx; falls back to amd64 under a plain `docker build`.
+# sccache version for cargo-binstall. Bare semver (no leading "v"): binstall's
+# version spec is `sccache@X.Y.Z`. Override with --build-arg SCCACHE_VERSION=X.Y.Z.
+ARG SCCACHE_VERSION=0.8.2
 ARG RTK_TAG=v0.42.0
 ARG TARGETARCH
 RUN set -eux; \
@@ -87,9 +90,28 @@ RUN set -eux; \
     rm -rf /tmp/*; \
     rtk --version
 
+# sccache: compiler cache for Rust. Installed with cargo-binstall (prebuilt
+# binary, no source compile). cargo-binstall itself comes from its official
+# prebuilt installer script. Both land in $CARGO_HOME/bin (already on PATH).
+RUN set -eux; \
+    curl -fsSL --proto '=https' --tlsv1.2 \
+        https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
+        | bash; \
+    cargo binstall --no-confirm "sccache@${SCCACHE_VERSION}"; \
+    ln -sf "$CARGO_HOME/bin/sccache" /usr/local/bin/sccache; \
+    sccache --version; \
+    chmod -R a+rwX "$CARGO_HOME"; \
+    rm -rf /root/.cache /tmp/*
+
+# Route all cargo builds through sccache, and pin the cache dir so the runner
+# bind-mount target is deterministic even under rootless Docker (container runs
+# as root, HOME=/root, so the default ~/.cache/sccache would miss the mount).
+ENV RUSTC_WRAPPER=sccache \
+    SCCACHE_DIR=/home/dev/.cache/sccache
+
 # Sanity: fail the build if any tool is missing.
 RUN set -eux; \
-    rustc --version; cargo --version; clippy-driver --version; rust-analyzer --version; \
+    rustc --version; cargo --version; clippy-driver --version; rust-analyzer --version; sccache --version; \
     node --version; npm --version; bun --version; \
     python3 --version; uv --version; rtk --version; \
     git --version; rg --version; fd --version; jq --version; nvim --version | head -1
