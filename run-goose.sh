@@ -12,6 +12,9 @@
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
 #   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
+#   --del           Delete this agent's isolated config (~/.docker-agent/<proj>/goose)
+#                   for the work dir, then exit. Asks you to type the project name to
+#                   confirm. Only valid for the isolated config (not -H/-c).
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `goose`.
@@ -76,16 +79,23 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-# Extract the long flag --edit before getopts (which only handles short opts).
+# Extract the long flags --edit/--del before getopts (which only handles short opts).
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
 EDIT=0
+DEL=0
 _args=(); _stop=0
 for _a in "$@"; do
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; continue; fi
   _args+=("$_a")
 done
 set -- "${_args[@]}"
+
+if [ $((DEL + EDIT)) -gt 1 ]; then
+  echo "run-goose.sh: choose only one of --del, --edit" >&2
+  exit 2
+fi
 
 while getopts "c:iHw:n:h" opt; do
   case "$opt" in
@@ -94,7 +104,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,25p' "$0"; exit 0 ;;
+    h) sed -n '2,28p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -111,6 +121,28 @@ fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
 WORK_DIR="$(cd "$WORK_DIR" && pwd)"
+
+# --del: remove this agent's isolated config for the work dir, then exit. Only
+# touches the isolated ~/.docker-agent path — never -H host config or -c custom.
+if [ "$DEL" -eq 1 ]; then
+  if [ "$ISOLATE" -ne 1 ]; then
+    echo "run-goose.sh: --del only removes the isolated config; not valid with -H or -c" >&2
+    exit 2
+  fi
+  PROJ="$(basename "$WORK_DIR")"
+  DEL_DIR="$HOME/.docker-agent/$PROJ/goose"
+  if [ ! -e "$DEL_DIR" ]; then
+    echo "--del: nothing to delete at $DEL_DIR"; exit 0
+  fi
+  printf 'About to delete %s\nType the project name (%s) to confirm: ' "$DEL_DIR" "$PROJ"
+  read -r _ans
+  [ "$_ans" = "$PROJ" ] || { echo "aborted"; exit 1; }
+  rm -rf "$DEL_DIR"
+  [ -e "$DEL_DIR.json" ] && rm -f "$DEL_DIR.json"        # sibling .json (no-op for goose)
+  rmdir "$HOME/.docker-agent/$PROJ" 2>/dev/null || true  # prune parent if now empty
+  echo "deleted $DEL_DIR"
+  exit 0
+fi
 
 if [ "$ISOLATE" -eq 1 ]; then
   # Per-project AND per-agent: ~/.docker-agent/<work-dir-name>/goose
