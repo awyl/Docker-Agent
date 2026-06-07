@@ -12,7 +12,8 @@ LABEL org.opencontainers.image.title="agentic-dev-base" \
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
-    LC_ALL=C.UTF-8
+    LC_ALL=C.UTF-8 \
+    TERM=xterm-256color
 
 # Pull uv/uvx as static binaries from the official image (smaller than the installer).
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
@@ -52,6 +53,8 @@ RUN set -eux; \
         -y --no-modify-path --profile minimal \
         --component clippy --component rustfmt --component rust-analyzer; \
     ln -sf "$(rustup which rust-analyzer)" /usr/local/bin/rust-analyzer; \
+    # wasm browser/web target (wasm-bindgen, trunk, leptos/yew, ...).
+    rustup target add wasm32-unknown-unknown; \
     chmod -R a+rwX "$CARGO_HOME" "$RUSTUP_HOME"; \
     \
     # ---- shrink: drop caches, docs, apt lists ----
@@ -112,6 +115,7 @@ ENV RUSTC_WRAPPER=sccache \
 # Sanity: fail the build if any tool is missing.
 RUN set -eux; \
     rustc --version; cargo --version; clippy-driver --version; rust-analyzer --version; sccache --version; \
+    rustup target list --installed | grep -qx wasm32-unknown-unknown; \
     node --version; npm --version; bun --version; \
     python3 --version; uv --version; rtk --version; \
     git --version; rg --version; fd --version; jq --version; nvim --version | head -1

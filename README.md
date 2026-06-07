@@ -17,7 +17,7 @@ dir, as a non-root `dev` user whose UID/GID match the host owner of mounted file
 
 | Tool | Version (at build time) |
 |------|-------------------------|
-| Rust | latest stable + `clippy`, `rustfmt`, `rust-analyzer` |
+| Rust | latest stable + `clippy`, `rustfmt`, `rust-analyzer`, `wasm32-unknown-unknown` target |
 | Node.js | 22.x LTS (NodeSource) |
 | Bun | latest |
 | Python | 3.13 (distro) |
