@@ -10,6 +10,7 @@
     "git:github.com/obra/superpowers",
     "npm:pi-slopchop",
     "npm:@cortexkit/pi-magic-context",
-    "npm:@aliou/pi-guardrails"
+    "npm:@aliou/pi-guardrails",
+    "npm:pi-cache-graph"
   ]
 }
