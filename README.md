@@ -143,7 +143,8 @@ config dir below is used only with `-H`:
 | `./run-hermes.sh` | Hermes | `~/.hermes` |
 
 ```bash
-./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <agent args>]
+./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] \
+                [--mem-from | --mem-to] [-- <agent args>]
 ```
 
 | Flag | Meaning | Default |
@@ -153,6 +154,8 @@ config dir below is used only with `-H`:
 | `-H` | Use the host config dir directly (the agent default in the table above) | — |
 | `-c CONFIG_DIR` | Use a custom config dir | — |
 | `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
+| `--mem-from` | Copy the work-dir memory **from** host into the config dir, then exit — no container (Claude only) | — |
+| `--mem-to` | Copy the work-dir memory **to** host from the config dir, then exit — no container (Claude only) | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
 | `-n NAME` | Reuse a persistent named container instead of a throwaway one | — |
 | `-- …` | Everything after `--` is passed to the agent | — |
@@ -164,7 +167,17 @@ isolated, per-project config dir; pass `-H` to use your live host config instead
 `-i`/`-H`/`-c`), opens it in your editor, and exits without launching a
 container.
 
-`run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags.
+`--mem-from` / `--mem-to` (Claude only) copy the working dir's memory between the
+host Claude config and the resolved config dir, then exit. Claude keys memory by
+cwd, and the container's cwd is always `/work` (slug `-work`), so its memory lives
+under `<config-dir>/projects/-work/memory` while the host's lives under
+`~/.claude/projects/<host-slug>/memory`. `--mem-from` seeds the container from the
+host; `--mem-to` writes the container's memory back. Memory dir only (no session
+logs); point-in-time copy, last writer wins. The two are mutually exclusive and
+respect `-i`/`-H`/`-c` and `-w`.
+
+`run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags (except the
+Claude-only `--mem-from`/`--mem-to`).
 `run-goose.sh` with no extra args starts an interactive `goose session`;
 `run-hermes.sh` with no args starts the interactive Hermes CLI.
 
@@ -176,6 +189,8 @@ Examples:
 ./run-claude.sh -w ~/code/myproj                  # isolated config, a different repo
 ./run-claude.sh -c ~/.claude-sandbox -w /tmp/x    # custom config + repo
 ./run-claude.sh -n myproj                         # create/reuse "myproj"
+./run-claude.sh --mem-from                        # seed container memory from host
+./run-claude.sh --mem-to                          # save container memory back to host
 ./run-claude.sh -- --version                      # pass args through to claude
 ```
 

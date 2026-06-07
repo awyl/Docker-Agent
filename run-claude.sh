@@ -2,7 +2,8 @@
 # Run Claude Code in a container.
 #
 # Usage:
-#   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <claude args>]
+#   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
+#                 [--mem-from | --mem-to] [-- <claude args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/claude. Fresh config;
@@ -13,6 +14,10 @@
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
 #   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
+#   --mem-from      Copy the work-dir memory FROM host into the config dir, then exit.
+#   --mem-to        Copy the work-dir memory TO host from the config dir, then exit.
+#                   --mem-from and --mem-to are mutually exclusive. Memory dir only;
+#                   point-in-time copy (last writer wins). Honour -i/-H/-c and -w.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container. First call creates it;
 #                   later calls with the same NAME re-enter the same container
@@ -26,6 +31,8 @@
 #   run-claude.sh -w ~/code/myproj                 # isolated config, different repo
 #   run-claude.sh -c ~/.claude-sandbox -w /tmp/x   # custom config + repo
 #   run-claude.sh -n myproj                        # create/reuse "myproj"
+#   run-claude.sh --mem-from                       # seed container memory from host
+#   run-claude.sh --mem-to                         # save container memory back to host
 #   run-claude.sh -- --version                     # pass args to claude
 #
 # Build once:
@@ -52,6 +59,8 @@ NAME=""
 ISOLATE=0
 HOST=0
 CONFIG_EXPLICIT=0
+MEM_FROM=0
+MEM_TO=0
 
 # Rootless Docker maps the host user to container root, so bind-mounted files
 # appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
@@ -65,16 +74,27 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-# Extract the long flag --edit before getopts (which only handles short opts).
-# Stop at `--` so agent passthrough args keep their own --edit, if any.
+# Extract long flags (--edit, --mem-from, --mem-to) before getopts (which only
+# handles short opts). Stop at `--` so agent passthrough args keep their own, if any.
 EDIT=0
 _args=(); _stop=0
 for _a in "$@"; do
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
-  if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
+  if [ "$_stop" -eq 0 ]; then
+    case "$_a" in
+      --edit)     EDIT=1; continue ;;
+      --mem-from) MEM_FROM=1; continue ;;
+      --mem-to)   MEM_TO=1; continue ;;
+    esac
+  fi
   _args+=("$_a")
 done
 set -- "${_args[@]}"
+
+if [ $((MEM_FROM + MEM_TO)) -gt 1 ]; then
+  echo "run-claude.sh: choose only one of --mem-from, --mem-to" >&2
+  exit 2
+fi
 
 while getopts "c:iHw:n:h" opt; do
   case "$opt" in
@@ -83,7 +103,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,29p' "$0"; exit 0 ;;
+    h) sed -n '2,36p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -153,6 +173,34 @@ if [ "$EDIT" -eq 1 ]; then
   ED="${VISUAL:-${EDITOR:-}}"
   [ -z "$ED" ] && { command -v nvim >/dev/null 2>&1 && ED=nvim || ED=vi; }
   exec $ED "$CONFIG_DIR"
+fi
+
+# --mem-from / --mem-to: one-shot copy of the work-dir memory dir between the host
+# Claude config and the resolved config dir, then exit (no container). Claude keys
+# memory by cwd: the host slug is WORK_DIR with '/' and '.' collapsed to '-', and
+# inside the container cwd is always /work -> slug '-work'. Memory dir only.
+if [ "$MEM_FROM" -eq 1 ] || [ "$MEM_TO" -eq 1 ]; then
+  HOST_SLUG="$(printf '%s' "$WORK_DIR" | sed 's/[/.]/-/g')"
+  HOST_MEM="$HOME/.claude/projects/$HOST_SLUG/memory"
+  CONF_MEM="$CONFIG_DIR/projects/-work/memory"
+  if [ "$MEM_FROM" -eq 1 ]; then
+    if [ -d "$HOST_MEM" ]; then
+      mkdir -p "$CONF_MEM"
+      cp -a "$HOST_MEM/." "$CONF_MEM/"
+      echo "memory: copied host -> $CONF_MEM"
+    else
+      echo "memory: no host memory at $HOST_MEM (nothing to copy)"
+    fi
+  else
+    if [ -d "$CONF_MEM" ]; then
+      mkdir -p "$HOST_MEM"
+      cp -a "$CONF_MEM/." "$HOST_MEM/"
+      echo "memory: copied $CONF_MEM -> host ($HOST_MEM)"
+    else
+      echo "memory: no config memory at $CONF_MEM (nothing to copy)"
+    fi
+  fi
+  exit 0
 fi
 
 # --- Named container: a persistent sandbox we exec claude into ---
