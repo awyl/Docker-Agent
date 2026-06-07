@@ -24,8 +24,16 @@ dir, as a non-root `dev` user whose UID/GID match the host owner of mounted file
 | uv | latest (from `ghcr.io/astral-sh/uv`) |
 | Tooling | `git`, `ripgrep`, `fd`, `jq`, `fzf`, `bat`, `neovim`, `curl`, `wget`, `unzip`, build-essential |
 | `rtk` | token-compressing proxy (prebuilt release binary, pinned via `RTK_TAG`) — shared by every agent |
+| `sccache` | Rust compiler cache (via `cargo binstall`, pinned via `SCCACHE_VERSION`); wired as `RUSTC_WRAPPER`, cache shared across agents |
 
 Image size: ~1.7 GB. Caches, docs, and man pages are stripped to keep it lean.
+
+**Rust compiler cache (sccache).** The base image bundles
+[sccache](https://github.com/mozilla/sccache) and sets `RUSTC_WRAPPER=sccache`, so
+every cargo build in any agent container is cached. The cache persists on the host
+at `~/.cache/sccache` (override with `SCCACHE_DIR`) and is bind-mounted into each
+container, so it is shared across all agents and with host builds. Check hit rates
+inside a container with `sccache --show-stats`.
 
 ### `agentic-claude`
 
@@ -94,6 +102,7 @@ Build args:
 
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
 - `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v0.42.0`), base image.
+- `SCCACHE_VERSION` — sccache version for `cargo binstall`, bare semver (default `0.8.2`), base image.
 - `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
 ## Install (optional)
@@ -215,6 +224,7 @@ By default each run uses a throwaway container (`--rm`, gone on exit). With
 | `CONFIG_DIR` (`~/.claude`) | `/home/dev/.claude` | plugins, skills, hooks, history, **credentials** |
 | `<CONFIG_DIR>.json` (`~/.claude.json`) | `/home/dev/.claude.json` | project/trust state, MCP servers, enabled plugins |
 | `WORK_DIR` (`$PWD`) | `/work` | your codebase, read-write |
+| `SCCACHE_CACHE` (`~/.cache/sccache`) | `/home/dev/.cache/sccache` | shared Rust compiler cache, read-write |
 
 The trust/config JSON convention is `<config-dir>.json` — so `~/.claude` pairs
 with `~/.claude.json`, and `~/.claude-sandbox` pairs with `~/.claude-sandbox.json`
