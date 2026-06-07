@@ -41,6 +41,12 @@ ISOLATE=0
 HOST=0
 CONFIG_EXPLICIT=0
 
+# Persistent sccache compile cache, shared with the host. Pin to the host default
+# (~/.cache/sccache) unless SCCACHE_DIR is already exported. Created before the
+# mount so Docker doesn't materialize a root-owned dir.
+SCCACHE_CACHE="${SCCACHE_DIR:-$HOME/.cache/sccache}"
+mkdir -p "$SCCACHE_CACHE"
+
 # Rootless Docker maps the host user to container root, so bind-mounted files
 # appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
 # root in that case (root -> host user, owns the mounts). Rootful Docker keeps
@@ -111,6 +117,7 @@ if [ -n "$NAME" ]; then
     docker run -d --name "$NAME" $USER_FLAG \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
       -v "$WORK_DIR":/work \
+      -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
@@ -121,5 +128,6 @@ fi
 exec docker run --rm -it $USER_FLAG \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
   -v "$WORK_DIR":/work \
+  -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
   -w /work \
   "$IMAGE" "$@"
