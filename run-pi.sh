@@ -62,6 +62,23 @@ CONFIG_EXPLICIT=0
 SCCACHE_CACHE="${SCCACHE_DIR:-$HOME/.cache/sccache}"
 mkdir -p "$SCCACHE_CACHE"
 
+# Seed the host's global git identity as the container's GLOBAL config, so a repo's
+# own user.name/email (in the mounted /work/.git/config) takes precedence and the
+# host identity is only the fallback. Regenerated each launch; skipped entirely if
+# the host has no global identity (container then behaves as today).
+GIT_ID_FILE="$HOME/.docker-agent/gitconfig"
+_gn="$(git config --global user.name  2>/dev/null || true)"
+_ge="$(git config --global user.email 2>/dev/null || true)"
+GIT_ENV=()
+if [ -n "$_gn" ] || [ -n "$_ge" ]; then
+  mkdir -p "$(dirname "$GIT_ID_FILE")"
+  { echo "[user]"
+    [ -n "$_gn" ] && printf '\tname = %s\n'  "$_gn"
+    [ -n "$_ge" ] && printf '\temail = %s\n' "$_ge"
+  } > "$GIT_ID_FILE"
+  GIT_ENV=(-v "$GIT_ID_FILE":/home/dev/.gitconfig:ro -e GIT_CONFIG_GLOBAL=/home/dev/.gitconfig)
+fi
+
 # Rootless Docker maps the host user to container root, so bind-mounted files
 # appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
 # root in that case (root -> host user, owns the mounts). Rootful Docker keeps
@@ -148,6 +165,7 @@ if [ -n "$NAME" ]; then
       -v "$CONFIG_SRC":"$CONFIG_DST" \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
+      ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
@@ -160,5 +178,6 @@ exec docker run --rm -it $USER_FLAG \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
+  ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
   -w /work \
   "$IMAGE" "$@"
