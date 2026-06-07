@@ -224,6 +224,7 @@ By default each run uses a throwaway container (`--rm`, gone on exit). With
 | `CONFIG_DIR` (`~/.claude`) | `/home/dev/.claude` | plugins, skills, hooks, history, **credentials** |
 | `<CONFIG_DIR>.json` (`~/.claude.json`) | `/home/dev/.claude.json` | project/trust state, MCP servers, enabled plugins |
 | `WORK_DIR` (`$PWD`) | `/work` | your codebase, read-write |
+| `~/.docker-agent/gitconfig` (generated) | `/home/dev/.gitconfig` (`GIT_CONFIG_GLOBAL`) | host global git identity, fallback only — read-only |
 | `SCCACHE_CACHE` (`~/.cache/sccache`) | `/home/dev/.cache/sccache` | shared Rust compiler cache, read-write |
 
 The trust/config JSON convention is `<config-dir>.json` — so `~/.claude` pairs
@@ -254,6 +255,12 @@ context-mode hooks/MCP server.
 
 ## Notes & caveats
 
+- **Git identity.** The runners seed your host's *global* `user.name` / `user.email`
+  into the container as its global git config (a generated, read-only
+  `~/.docker-agent/gitconfig` mounted at `/home/dev/.gitconfig`). A repo's own
+  identity in `/work/.git/config` always wins (git precedence: local > global); the
+  host identity is only the fallback. If the host has no global identity, nothing is
+  injected.
 - **Credentials exposure.** The default isolated config is *seeded* with a copy
   of your host credentials (e.g. `~/.claude/.credentials.json`) so the agent
   stays logged in — that copy lives in `~/.docker-agent/<proj>/<agent>` and any
