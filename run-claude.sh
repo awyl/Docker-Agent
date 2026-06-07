@@ -14,6 +14,9 @@
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
 #   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
+#   --del           Delete this agent's isolated config (~/.docker-agent/<proj>/claude)
+#                   for the work dir, then exit. Asks you to type the project name to
+#                   confirm. Only valid for the isolated config (not -H/-c).
 #   --mem-from      Copy the work-dir memory FROM host into the config dir, then exit.
 #   --mem-to        Copy the work-dir memory TO host from the config dir, then exit.
 #                   --mem-from and --mem-to are mutually exclusive. Memory dir only;
@@ -97,15 +100,17 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-# Extract long flags (--edit, --mem-from, --mem-to) before getopts (which only
+# Extract long flags (--edit, --del, --mem-from, --mem-to) before getopts (which only
 # handles short opts). Stop at `--` so agent passthrough args keep their own, if any.
 EDIT=0
+DEL=0
 _args=(); _stop=0
 for _a in "$@"; do
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
   if [ "$_stop" -eq 0 ]; then
     case "$_a" in
       --edit)     EDIT=1; continue ;;
+      --del)      DEL=1; continue ;;
       --mem-from) MEM_FROM=1; continue ;;
       --mem-to)   MEM_TO=1; continue ;;
     esac
@@ -118,6 +123,10 @@ if [ $((MEM_FROM + MEM_TO)) -gt 1 ]; then
   echo "run-claude.sh: choose only one of --mem-from, --mem-to" >&2
   exit 2
 fi
+if [ $((DEL + EDIT + MEM_FROM + MEM_TO)) -gt 1 ]; then
+  echo "run-claude.sh: choose only one of --del, --edit, --mem-from, --mem-to" >&2
+  exit 2
+fi
 
 while getopts "c:iHw:n:h" opt; do
   case "$opt" in
@@ -126,7 +135,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,36p' "$0"; exit 0 ;;
+    h) sed -n '2,39p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -143,6 +152,28 @@ fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
 WORK_DIR="$(cd "$WORK_DIR" && pwd)"
+
+# --del: remove this agent's isolated config for the work dir, then exit. Only
+# touches the isolated ~/.docker-agent path — never -H host config or -c custom.
+if [ "$DEL" -eq 1 ]; then
+  if [ "$ISOLATE" -ne 1 ]; then
+    echo "run-claude.sh: --del only removes the isolated config; not valid with -H or -c" >&2
+    exit 2
+  fi
+  PROJ="$(basename "$WORK_DIR")"
+  DEL_DIR="$HOME/.docker-agent/$PROJ/claude"
+  if [ ! -e "$DEL_DIR" ]; then
+    echo "--del: nothing to delete at $DEL_DIR"; exit 0
+  fi
+  printf 'About to delete %s\nType the project name (%s) to confirm: ' "$DEL_DIR" "$PROJ"
+  read -r _ans
+  [ "$_ans" = "$PROJ" ] || { echo "aborted"; exit 1; }
+  rm -rf "$DEL_DIR"
+  [ -e "$DEL_DIR.json" ] && rm -f "$DEL_DIR.json"        # claude's sibling .json
+  rmdir "$HOME/.docker-agent/$PROJ" 2>/dev/null || true  # prune parent if now empty
+  echo "deleted $DEL_DIR"
+  exit 0
+fi
 
 if [ "$ISOLATE" -eq 1 ]; then
   # Per-project AND per-agent: ~/.docker-agent/<work-dir-name>/claude
