@@ -13,7 +13,9 @@ LABEL org.opencontainers.image.title="agentic-dev-base" \
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
-    TERM=xterm-256color
+    TERM=xterm-256color \
+    COLORTERM=truecolor \
+    TZ=America/New_York
 
 # Pull uv/uvx as static binaries from the official image (smaller than the installer).
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
