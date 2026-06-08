@@ -89,6 +89,20 @@ clone with the `HERMES_REF` build arg (default `main`).
 
 ## Build
 
+The easiest path is `./build.sh`, which builds the base image first, then each
+agent image with `UID`/`GID` matching your host user:
+
+```bash
+./build.sh              # base + all agents
+./build.sh claude pi    # base + only the named agents
+./build.sh --base-only  # just the base image
+./build.sh --no-cache   # extra flags are forwarded to docker build
+```
+
+Override defaults via env, e.g. `HERMES_REF=v1.0 ./build.sh hermes`.
+
+Or build by hand:
+
 ```bash
 # 1. Base image
 docker build -t agentic-dev-base:latest .
@@ -127,6 +141,7 @@ This creates:
 | `agent-pi` | `run-pi.sh` |
 | `agent-goose` | `run-goose.sh` |
 | `agent-hermes` | `run-hermes.sh` |
+| `agent-build` | `build.sh` |
 
 Then, from anywhere:
 

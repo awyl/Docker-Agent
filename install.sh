@@ -8,13 +8,15 @@
 #   run-pi.sh     -> agent-pi
 #   run-goose.sh  -> agent-goose
 #   run-hermes.sh -> agent-hermes
+#   build.sh      -> agent-build
 #
 # Usage:
 #   ./install.sh            # symlink into ~/.local/bin
 #   BIN=~/bin ./install.sh  # symlink into a different dir
 #
-# Note: this does not build the Docker images. The commands only work once
-# `agentic-*:latest` exists (see "Build" in README.md).
+# Note: this does not build the Docker images. The agent commands only work
+# once `agentic-*:latest` exists; build them with `agent-build` (or see
+# "Build" in README.md).
 set -euo pipefail
 
 SRC="$(cd "$(dirname "$0")" && pwd)"
@@ -27,6 +29,7 @@ links=(
   "run-pi.sh:agent-pi"
   "run-goose.sh:agent-goose"
   "run-hermes.sh:agent-hermes"
+  "build.sh:agent-build"
 )
 
 installed=()
