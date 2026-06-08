@@ -35,6 +35,12 @@ at `~/.cache/sccache` (override with `SCCACHE_DIR`) and is bind-mounted into eac
 container, so it is shared across all agents and with host builds. Check hit rates
 inside a container with `sccache --show-stats`.
 
+**Cargo source caches.** The host's `~/.cargo/git` and `~/.cargo/registry` (override
+the cargo home via `CARGO_HOME`) are bind-mounted at `/home/dev/.cargo/git` and
+`/home/dev/.cargo/registry`, read-write. Agents inside the container can read the
+source code of crates (extracted under `registry/src`, git checkouts under
+`git/checkouts`) and the caches stay shared with host builds.
+
 ### `agentic-claude`
 
 Adds, on top of the base:
@@ -227,6 +233,8 @@ By default each run uses a throwaway container (`--rm`, gone on exit). With
 | `WORK_DIR` (`$PWD`) | `/work` | your codebase, read-write |
 | `~/.docker-agent/gitconfig` (generated) | `/home/dev/.gitconfig` (`GIT_CONFIG_GLOBAL`) | host global git identity, fallback only — read-only |
 | `SCCACHE_CACHE` (`~/.cache/sccache`) | `/home/dev/.cache/sccache` | shared Rust compiler cache, read-write |
+| `CARGO_HOST/git` (`~/.cargo/git`) | `/home/dev/.cargo/git` | shared cargo git source cache, read-write |
+| `CARGO_HOST/registry` (`~/.cargo/registry`) | `/home/dev/.cargo/registry` | shared cargo registry/crate source cache, read-write |
 
 The trust/config JSON convention is `<config-dir>.json` — so `~/.claude` pairs
 with `~/.claude.json`, and `~/.claude-sandbox` pairs with `~/.claude-sandbox.json`

@@ -71,6 +71,13 @@ MEM_TO=0
 SCCACHE_CACHE="${SCCACHE_DIR:-$HOME/.cache/sccache}"
 mkdir -p "$SCCACHE_CACHE"
 
+# Cargo registry + git caches, shared with the host so agents inside the container
+# can read crate source code (registry/src, git checkouts). Pin to the host default
+# (~/.cargo) unless CARGO_HOME is exported. Created before the mount so Docker
+# doesn't materialize root-owned dirs.
+CARGO_HOST="${CARGO_HOME:-$HOME/.cargo}"
+mkdir -p "$CARGO_HOST/git" "$CARGO_HOST/registry"
+
 # Seed the host's global git identity as the container's GLOBAL config, so a repo's
 # own user.name/email (in the mounted /work/.git/config) takes precedence and the
 # host identity is only the fallback. Regenerated each launch; skipped entirely if
@@ -272,6 +279,8 @@ if [ -n "$NAME" ]; then
       -v "$CONFIG_JSON":/home/dev/.claude.json \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
+      -v "$CARGO_HOST/git":/home/dev/.cargo/git \
+      -v "$CARGO_HOST/registry":/home/dev/.cargo/registry \
       ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
       -w /work \
       --entrypoint sleep \
@@ -286,6 +295,8 @@ exec docker run --rm -it $USER_FLAG \
   -v "$CONFIG_JSON":/home/dev/.claude.json \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
+  -v "$CARGO_HOST/git":/home/dev/.cargo/git \
+  -v "$CARGO_HOST/registry":/home/dev/.cargo/registry \
   ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
   -w /work \
   "$IMAGE" "$@"
