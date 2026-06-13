@@ -12,10 +12,14 @@
 #   agentic-pi:latest         (Dockerfile.pi)
 #
 # Usage:
-#   ./build.sh                 # build base + all agents
-#   ./build.sh claude pi       # build base + only the named agents
+#   ./build.sh                 # build base + all agents (all cached)
+#   ./build.sh claude pi       # cached base + force-rebuild named agent layers
 #   ./build.sh --no-cache      # forward flags to docker build (e.g. --no-cache)
-#   ./build.sh --base-only     # build only the base image
+#   ./build.sh --base-only     # force-rebuild only the base image
+#
+# Naming specific agents force-rebuilds only those agent layers (--no-cache on
+# the agent build); the shared base stays on cache. Passing your own docker
+# flags disables this auto --no-cache.
 #
 # Env:
 #   UID, GID      override the uid/gid baked in (default: current user)
@@ -59,11 +63,22 @@ for arg in "$@"; do
   esac
 done
 
-# No agent names given -> build them all.
+# No agent names given -> build them all (and let the base layer cache too).
+# When specific agents are named, force-rebuild just those agent layers while
+# leaving the shared base on cache.
+explicit=1
 if [ "${#selected[@]}" -eq 0 ]; then
+  explicit=0
   for entry in "${agents[@]}"; do
     selected+=("${entry%%:*}")
   done
+fi
+
+# Per-agent flags: force a rebuild of the agent layer when a name was given
+# explicitly, unless the caller already passed their own cache flags.
+agent_flags=()
+if [ "$explicit" -eq 1 ] && [ "${#docker_flags[@]}" -eq 0 ]; then
+  agent_flags+=(--no-cache)
 fi
 
 # Validate requested agent names before building anything.
@@ -82,8 +97,15 @@ if [ "$base_only" -eq 0 ]; then
   done
 fi
 
+# Force a rebuild of just the base when --base-only is requested explicitly,
+# unless the caller already passed their own cache flags.
+base_flags=()
+if [ "$base_only" -eq 1 ] && [ "${#docker_flags[@]}" -eq 0 ]; then
+  base_flags+=(--no-cache)
+fi
+
 echo "==> Building agentic-dev-base:latest"
-docker build "${docker_flags[@]}" -t agentic-dev-base:latest .
+docker build "${docker_flags[@]}" "${base_flags[@]}" -t agentic-dev-base:latest .
 
 if [ "$base_only" -eq 1 ]; then
   echo "==> Done (base only)."
@@ -101,7 +123,7 @@ for name in "${selected[@]}"; do
     [ "$name" = "hermes" ] && extra+=(--build-arg "HERMES_REF=$HERMES_REF")
 
     echo "==> Building $image  ($dockerfile)"
-    docker build "${docker_flags[@]}" -f "$dockerfile" \
+    docker build "${docker_flags[@]}" "${agent_flags[@]}" -f "$dockerfile" \
       --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
       "${extra[@]}" \
       -t "$image" .
