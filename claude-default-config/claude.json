@@ -1,0 +1,22 @@
+{
+  "mcpServers": {
+    "semble": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "semble[mcp]",
+        "semble"
+      ]
+    },
+    "codegraph": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "@colbymchenry/codegraph",
+        "serve",
+        "--mcp"
+      ]
+    }
+  }
+}

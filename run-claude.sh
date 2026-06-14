@@ -201,20 +201,29 @@ CONFIG_JSON="${CONFIG_DIR}.json"
 # Claude stores login (oauthAccount/userID) and onboarding state in this sibling
 # file, not in the config dir. A fresh isolated config with an empty {} here
 # would re-prompt for login + theme on every new project, so seed just those
-# keys from the host ~/.claude.json. No project history, MCP servers, or caches
-# are carried over, keeping the per-project config isolated. Falls back to {} if
-# the file already has content, isn't isolated, or python3/host config is absent
-# (an empty file would trip "JSON Parse error: Unexpected EOF" on startup).
+# keys from the host ~/.claude.json. No project history or caches are carried
+# over from the host, keeping the per-project config isolated. The bundled
+# default MCP servers (claude-default-config/claude.json) ARE merged in so every
+# new config gets them. Falls back to {} if the file already has content, isn't
+# isolated, or python3/host config is absent (an empty file would trip
+# "JSON Parse error: Unexpected EOF" on startup).
 HOST_JSON="$HOME/.claude.json"
+DEFAULT_JSON="$SCRIPT_DIR/claude-default-config/claude.json"
 if [ ! -s "$CONFIG_JSON" ]; then
   if [ "$ISOLATE" -eq 1 ] && [ -s "$HOST_JSON" ] && command -v python3 >/dev/null 2>&1; then
-    HOST_JSON="$HOST_JSON" CONFIG_JSON="$CONFIG_JSON" \
+    HOST_JSON="$HOST_JSON" CONFIG_JSON="$CONFIG_JSON" DEFAULT_JSON="$DEFAULT_JSON" \
     SEED_KEYS="oauthAccount userID hasCompletedOnboarding lastOnboardingVersion firstStartTime" \
     python3 -c 'import json, os
 src = json.load(open(os.environ["HOST_JSON"]))
 keys = os.environ["SEED_KEYS"].split()
-json.dump({k: src[k] for k in keys if k in src}, open(os.environ["CONFIG_JSON"], "w"))' \
+out = {k: src[k] for k in keys if k in src}
+dj = os.environ.get("DEFAULT_JSON")
+if dj and os.path.exists(dj):
+    out.update(json.load(open(dj)))
+json.dump(out, open(os.environ["CONFIG_JSON"], "w"))' \
       || printf '{}\n' > "$CONFIG_JSON"
+  elif [ -s "$DEFAULT_JSON" ]; then
+    cp "$DEFAULT_JSON" "$CONFIG_JSON"
   else
     printf '{}\n' > "$CONFIG_JSON"
   fi
