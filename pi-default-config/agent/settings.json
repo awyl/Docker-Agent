@@ -11,7 +11,7 @@
     "npm:pi-slopchop",
     "npm:@cortexkit/pi-magic-context",
     "npm:@aliou/pi-guardrails",
-    "npm:pi-cache-graph",
-    "npm:pi-mcp-extension"
+    "npm:pi-mcp-extension",
+    "npm:pi-minimax-m3-caching-fix"
   ]
 }

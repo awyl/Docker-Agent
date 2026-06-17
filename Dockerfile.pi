@@ -16,25 +16,17 @@ ARG UID=1000
 ARG GID=1000
 
 # Pi CLI (npm). --ignore-scripts per the upstream installer recommendation.
-# codegraph ships alongside; both global bins land on PATH (/usr/local/bin via
-# the base node setup).
+# codegraph + biome (for the AFT plugin) ship alongside; all global bins land on
+# PATH (/usr/local/bin via the base node setup). biome is installed WITHOUT
+# --ignore-scripts so its postinstall can fetch the platform binary.
 RUN set -eux; \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
-    npm install -g @colbymchenry/codegraph; \
+    npm install -g @colbymchenry/codegraph @biomejs/biome; \
     npm cache clean --force; \
     rm -rf /root/.npm /tmp/*; \
     pi --version; \
-    command -v codegraph
-
-# semble (uv tool). Install into global dirs so the `semble` bin lands on PATH
-# for the dev user (default ~/.local/bin would be root-only). uvx at runtime
-# resolves its own ephemeral envs under the dev user's cache.
-ENV UV_TOOL_DIR=/usr/local/uv-tools \
-    UV_TOOL_BIN_DIR=/usr/local/bin
-RUN set -eux; \
-    uv tool install semble; \
-    chmod -R a+rX "$UV_TOOL_DIR"; \
-    command -v semble
+    command -v codegraph; \
+    command -v biome
 
 # `pi install <plugin>` runs plain `npm install`, and npm 11 added an
 # allow-scripts gate: any dependency with install/postinstall scripts (e.g.

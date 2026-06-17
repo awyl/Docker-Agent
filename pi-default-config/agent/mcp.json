@@ -1,13 +1,3 @@
 {
-  "mcpServers": {
-    "semble": {
-      "lifecycle": "eager",
-      "command": "uvx",
-      "args": [
-        "--from",
-        "semble[mcp]",
-        "semble"
-      ]
-    }
-  }
+  "mcpServers": {}
 }
