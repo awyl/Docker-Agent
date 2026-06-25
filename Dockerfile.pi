@@ -44,11 +44,14 @@ RUN set -eux; \
 USER dev
 ENV HOME=/home/dev
 
-# Redirect XDG data under the bind-mounted Pi config dir so plugins that store
-# state in $XDG_DATA_HOME (default ~/.local/share, which is ephemeral here —
-# only ~/.pi is mounted) persist across containers. e.g. cortexkit writes to
-# ~/.pi/share/cortexkit instead of ~/.local/share/cortexkit.
+# Redirect XDG data + config under the bind-mounted Pi config dir so plugins that
+# store state in $XDG_DATA_HOME (default ~/.local/share) or read config from
+# $XDG_CONFIG_HOME (default ~/.config) — both ephemeral here, only ~/.pi is
+# mounted — persist across containers. e.g. magic-context reads its config from
+# ~/.pi/config/cortexkit/magic-context.jsonc and writes its DB to
+# ~/.pi/share/cortexkit instead of ~/.config and ~/.local/share.
 ENV XDG_DATA_HOME=/home/dev/.pi/share
+ENV XDG_CONFIG_HOME=/home/dev/.pi/config
 
 WORKDIR /work
 

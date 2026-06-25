@@ -49,10 +49,12 @@ IMAGE="${IMAGE:-agentic-pi:latest}"
 AGENT_CMD="pi"
 CONFIG_SRC="$HOME/.pi"
 CONFIG_DST="/home/dev/.pi"
-# Plugins that store state in $XDG_DATA_HOME (default ~/.local/share, ephemeral
-# here) are redirected under the mounted config dir so they persist. Matches the
-# ENV baked into the image; set explicitly so it holds even on an older image.
+# Plugins that store state in $XDG_DATA_HOME (default ~/.local/share) or read
+# config from $XDG_CONFIG_HOME (default ~/.config) — both ephemeral here — are
+# redirected under the mounted config dir so they persist. Matches the ENV baked
+# into the image; set explicitly so it holds even on an older image.
 XDG_DATA_DST="$CONFIG_DST/share"
+XDG_CONFIG_DST="$CONFIG_DST/config"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
@@ -187,6 +189,14 @@ if [ ! -e "$CONFIG_SRC/agent/settings.json" ] && [ -d "$DEFAULT_CONFIG/agent" ];
   cp -rn "$DEFAULT_CONFIG/agent/." "$CONFIG_SRC/agent/"
 fi
 
+# Magic Context (cortexkit) reads config from $XDG_CONFIG_HOME/cortexkit, which
+# the image points at ~/.pi/config. Seed our default magic-context.jsonc there if
+# absent. cp -rn never clobbers an existing user config.
+if [ -d "$DEFAULT_CONFIG/config" ]; then
+  mkdir -p "$CONFIG_SRC/config"
+  cp -rn "$DEFAULT_CONFIG/config/." "$CONFIG_SRC/config/"
+fi
+
 # --edit: open the resolved (now-seeded) host config dir in an editor, then exit.
 if [ "$EDIT" -eq 1 ]; then
   ED="${VISUAL:-${EDITOR:-}}"
@@ -201,6 +211,7 @@ if [ -n "$NAME" ]; then
   else
     docker run -d --name "$NAME" $USER_FLAG \
       -e "XDG_DATA_HOME=$XDG_DATA_DST" \
+      -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
@@ -210,12 +221,13 @@ if [ -n "$NAME" ]; then
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec docker exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
 exec docker run --rm -it $USER_FLAG \
   -e "XDG_DATA_HOME=$XDG_DATA_DST" \
+  -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
