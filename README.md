@@ -3,10 +3,11 @@
 Docker images for agentic development:
 
 1. **`agentic-dev-base`** — a language/tooling base image (Rust, Node.js, Bun, Python3, plus the common Unix toolkit).
-2. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
-3. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
-4. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
-5. **`agentic-hermes`** — base + the [Hermes agent](https://github.com/NousResearch/hermes-agent) as entrypoint.
+2. **`agentic-browser-base`** — base + [KasmVNC](https://github.com/kasmtech/KasmVNC) (web remote view) + [Camoufox](https://camoufox.com) (stealth Firefox). A reusable layer for agents that drive a browser.
+3. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
+4. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
+5. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
+6. **`agentic-hermes`** — browser-base + the [Hermes agent](https://github.com/NousResearch/hermes-agent) as entrypoint.
 
 Each agent image runs against a bind-mounted codebase and a bind-mounted config
 dir, as a non-root `dev` user whose UID/GID match the host owner of mounted files.
@@ -78,14 +79,42 @@ Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
 so it uses file-based secrets (`~/.config/goose/secrets.yaml`) instead of a
 system keyring, which doesn't exist in a container.
 
+### `agentic-browser-base` (base + KasmVNC + Camoufox)
+
+A reusable layer between the base and any browser-driving agent. Adds:
+
+- **[KasmVNC](https://github.com/kasmtech/KasmVNC)** — a web-native VNC server
+  (its own `Xvnc` X server + Openbox WM). You watch the session from any browser
+  over HTTPS; its adaptive WebP/JPEG encoding keeps bandwidth low without a
+  WebRTC/GPU stack. The `kali-rolling` package is used (KasmVNC ships no trixie
+  build; kali-rolling tracks Debian testing, matching trixie's libc).
+- **[Camoufox](https://camoufox.com)** — a stealth Firefox fork driven by
+  Playwright, in its own venv at `/opt/camoufox` (browser + GeoIP DB baked in).
+  `playwright` is pinned to `1.55.0` (newer releases send a viewport shape this
+  Camoufox build rejects).
+
+Helpers on `PATH`: `with-vnc` (entrypoint wrapper — starts KasmVNC + Openbox on
+`:1` when `START_VNC=1`, then execs the given command on that display; a no-op
+otherwise), `camoufox` (CLI), `camoufox-py` (the venv's Python), and
+`camoufox-open URL` (open a URL in a visible Camoufox window to eyeball via the
+view). Camoufox runs non-headless on `DISPLAY=:1`, so you see the exact browser
+the agent drives.
+
+Clipboard: KasmVNC serves HTTPS (self-signed) so the browser clipboard API works
+— copy/paste is bidirectional. Seamless clipboard is disabled by default when the
+*viewer* browser is Firefox (upstream quirk); view in a Chromium-based browser or
+toggle it on in the KasmVNC control bar.
+
 ### `agentic-hermes`
 
 Adds the [Hermes agent](https://github.com/NousResearch/hermes-agent) (binary
-`hermes`) on top of the base. Hermes is a Python app, so it's installed into an
-isolated venv at `/opt/hermes` (Python 3.11 via `uv`, with the `.[all]` extra
-and `ffmpeg`) and the launcher is symlinked onto the global `PATH`. The venv is
-kept out of `~/.hermes` because that dir is the runtime-mounted config. Pin the
-clone with the `HERMES_REF` build arg (default `main`).
+`hermes`) on top of **`agentic-browser-base`**, so the agent can drive Camoufox
+and you can watch it remotely (`run-hermes.sh -b`). Hermes is a Python app, so
+it's installed into an isolated venv at `/opt/hermes` (Python 3.11 via `uv`, with
+the `.[all]` extra and `ffmpeg`) and the launcher is symlinked onto the global
+`PATH`. The venv is kept out of `~/.hermes` because that dir is the
+runtime-mounted config. The entrypoint is `with-vnc hermes`. Pin the clone with
+the `HERMES_REF` build arg (default `main`).
 
 ## Build
 
@@ -93,11 +122,14 @@ The easiest path is `./build.sh`, which builds the base image first, then each
 agent image with `UID`/`GID` matching your host user:
 
 ```bash
-./build.sh              # base + all agents
-./build.sh claude pi    # base + only the named agents
-./build.sh --base-only  # just the base image
+./build.sh              # base + browser-base + all agents
+./build.sh claude pi    # base + browser-base + only the named agents
+./build.sh --base-only  # just the base images (dev-base + browser-base)
 ./build.sh --no-cache   # extra flags are forwarded to docker build
 ```
+
+`agentic-browser-base` is built right after `agentic-dev-base` (hermes depends on
+it); `--base-only` refreshes both.
 
 Override defaults via env, e.g. `HERMES_REF=v1.0 ./build.sh hermes`.
 
@@ -106,6 +138,10 @@ Or build by hand:
 ```bash
 # 1. Base image
 docker build -t agentic-dev-base:latest .
+
+# 1b. Browser layer (KasmVNC + Camoufox); hermes is built FROM this
+docker build -f Dockerfile.browser \
+  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-browser-base:latest .
 
 # 2. Agent images (UID/GID match your host user)
 docker build -f Dockerfile.claude \
@@ -123,6 +159,7 @@ Build args:
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
 - `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v0.42.0`), base image.
 - `SCCACHE_VERSION` — sccache version for `cargo binstall`, bare semver (default `0.8.2`), base image.
+- `KASMVNC_VERSION` — KasmVNC release to install (default `1.3.4`), `Dockerfile.browser` only.
 - `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
 ## Install (optional)
@@ -212,6 +249,17 @@ Claude-only `--mem-from`/`--mem-to`).
 `run-goose.sh` with no extra args starts an interactive `goose session`;
 `run-hermes.sh` with no args starts the interactive Hermes CLI.
 
+**Browser view (`run-hermes.sh -b [PORT]`).** Starts KasmVNC alongside Hermes and
+publishes it — open `https://localhost:8444/` (self-signed; accept the warning)
+and log in as user `kasm`. When the agent (or you, via `camoufox-open URL`) opens
+Camoufox, it renders in that view. Pass a port to run several sessions at once,
+e.g. `run-hermes.sh -b 8500 -n proj2` (the number right after `-b` overrides the
+port; `VNC_PORT` env does the same). Other knobs: `VNC_PASSWORD` (random and
+printed to the log if unset; **min 6 chars**), `VNC_GEOMETRY` (default `1280x800`).
+For a named container, pass `-b [PORT]` on the run that first creates it — the
+published port is fixed at creation. Use a Chromium-based viewer for seamless
+clipboard.
+
 Examples:
 
 ```bash
@@ -223,6 +271,7 @@ Examples:
 ./run-claude.sh --mem-from                        # seed container memory from host
 ./run-claude.sh --mem-to                          # save container memory back to host
 ./run-claude.sh -- --version                      # pass args through to claude
+./run-hermes.sh -b                                # Hermes + browser view at https://localhost:8444
 ```
 
 ### Named (persistent) containers

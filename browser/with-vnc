@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Start KasmVNC (web-native VNC) with an Openbox session on $DISPLAY, then exec
+# the given command so whatever it launches renders onto that display and is
+# viewable from a browser. If START_VNC is unset/0 this is a transparent no-op:
+# it just execs the command (headless, exactly as before this layer existed).
+#
+# Env knobs:
+#   START_VNC=1          enable VNC (unset/0 -> skip, exec command headless)
+#   DISPLAY=:1           X display to create/use (default :1)
+#   VNC_GEOMETRY=1280x800
+#   VNC_PORT=8444        https/websocket port KasmVNC listens on
+#   VNC_USER=kasm        KasmVNC basic-auth username
+#   VNC_PASSWORD=...     password; a random one is generated & printed if unset
+#
+# Clipboard: browser copy/paste needs a secure context, so KasmVNC serves HTTPS
+# (self-signed snakeoil cert). Seamless clipboard is disabled by default when the
+# VIEWER browser is Firefox (upstream quirk) — view in a Chromium-based browser,
+# or toggle clipboard on in the KasmVNC control bar, for full copy/paste.
+set -euo pipefail
+
+if [ "${START_VNC:-0}" = "1" ]; then
+  export DISPLAY="${DISPLAY:-:1}"
+  disp_num="${DISPLAY#:}"
+  geom="${VNC_GEOMETRY:-1280x800}"
+  port="${VNC_PORT:-8444}"
+  vuser="${VNC_USER:-kasm}"
+  vpass="${VNC_PASSWORD:-}"
+
+  if [ -z "$vpass" ]; then
+    vpass="$(tr -dc 'a-zA-Z0-9' </dev/urandom | head -c 12)"
+    echo "[with-vnc] generated VNC password: $vpass" >&2
+  elif [ "${#vpass}" -lt 6 ]; then
+    # KasmVNC's kasmvncpasswd rejects passwords shorter than 6 chars.
+    echo "[with-vnc] VNC_PASSWORD must be at least 6 characters; got ${#vpass}." >&2
+    exit 2
+  fi
+
+  gw="${geom%x*}"; gh="${geom#*x}"
+
+  mkdir -p "$HOME/.vnc"
+
+  # Server config: fixed resolution (the -geometry CLI flag is ignored by the
+  # kasmvnc vncserver wrapper), HTTPS on (clipboard), bind all interfaces
+  # (container), and never drop into the DE picker on first run.
+  cat > "$HOME/.vnc/kasmvnc.yaml" <<YAML
+desktop:
+  resolution:
+    width: ${gw}
+    height: ${gh}
+  allow_resize: true
+network:
+  interface: 0.0.0.0
+  ssl:
+    require_ssl: true
+command_line:
+  prompt: false
+YAML
+
+  # Openbox: a tiny WM so browser windows map/size/decorate correctly.
+  cat > "$HOME/.vnc/xstartup" <<'SH'
+#!/bin/sh
+exec openbox-session
+SH
+  chmod +x "$HOME/.vnc/xstartup"
+
+  # KasmVNC basic-auth user with read+write. vncpasswd prompts twice (set/verify).
+  # Keep stderr so a failure (e.g. bad password) is visible, not a silent exit.
+  if ! printf '%s\n%s\n' "$vpass" "$vpass" | kasmvncpasswd -u "$vuser" -w >/dev/null; then
+    echo "[with-vnc] kasmvncpasswd failed to set the VNC password" >&2
+    exit 1
+  fi
+
+  if ! vncserver ":${disp_num}" -geometry "$geom" -depth 24 \
+      -websocketPort "$port" -interface 0.0.0.0 \
+      -xstartup "$HOME/.vnc/xstartup" >/dev/null; then
+    echo "[with-vnc] vncserver failed to start (see ~/.vnc/*.log)" >&2
+    exit 1
+  fi
+
+  echo "[with-vnc] KasmVNC live: https://localhost:${port}/  (user=${vuser})" >&2
+fi
+
+exec "$@"

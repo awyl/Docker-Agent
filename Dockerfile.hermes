@@ -10,7 +10,11 @@
 # UID/GID are build args so files written into the mounted config/repo
 # stay owned by your host user.
 
-FROM agentic-dev-base:latest
+# Re-based on the browser layer (KasmVNC + Camoufox) so the hermes agent can
+# drive a stealth browser and you can watch it remotely. UID/GID are consumed by
+# that layer (which creates the `dev` user); declared here so build.sh can pass
+# them without an "unused build arg" warning.
+FROM agentic-browser-base:latest
 
 ARG UID=1000
 ARG GID=1000
@@ -41,15 +45,13 @@ RUN set -eux; \
     rm -rf /root/.cache /tmp/*; \
     test -x /usr/local/bin/hermes
 
-# Non-root user whose UID/GID match the host owner of the mounted files.
-RUN set -eux; \
-    groupadd -g "${GID}" dev 2>/dev/null || true; \
-    useradd -m -u "${UID}" -g "${GID}" -s /bin/bash dev
+# The non-root `dev` user (UID/GID-matched) is created by the browser base layer.
 
 USER dev
 ENV HOME=/home/dev
 WORKDIR /work
 
-# hermes is the entrypoint; bare `hermes` starts the interactive CLI.
-# Extra args from `docker run` are appended.
-ENTRYPOINT ["hermes"]
+# with-vnc starts KasmVNC + Openbox when START_VNC=1 (set by run-hermes.sh -b),
+# then execs hermes on that display; a no-op passthrough otherwise. Bare `hermes`
+# starts the interactive CLI; extra args from `docker run` are appended.
+ENTRYPOINT ["with-vnc", "hermes"]

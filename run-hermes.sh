@@ -2,7 +2,7 @@
 # Run the Hermes agent in a container.
 #
 # Usage:
-#   run-hermes.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <hermes args>]
+#   run-hermes.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-b [PORT]] [--edit] [-- <hermes args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/hermes. Fresh config; log in
@@ -17,6 +17,12 @@
 #                   confirm. Only valid for the isolated config (not -H/-c).
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
+#   -b [PORT]       Browser view: start KasmVNC + Camoufox and publish the view.
+#                   Open https://localhost:PORT (default 8444, or VNC_PORT env).
+#                   Give a port to run several sessions at once, e.g. -b 8500.
+#                   Env: VNC_PASSWORD (random if unset, printed to log), VNC_GEOMETRY
+#                   (default 1280x800). Chromium viewer recommended for clipboard;
+#                   HTTPS is self-signed (accept the warning).
 #   anything after the options is passed through to `hermes`.
 #   With no hermes args, the interactive CLI starts.
 #
@@ -25,6 +31,8 @@
 #   run-hermes.sh -H                   # host ~/.hermes config
 #   run-hermes.sh -w ~/code/myproj     # isolated config, different repo
 #   run-hermes.sh -n myproj            # create/reuse "myproj"
+#   run-hermes.sh -b                   # browser view at https://localhost:8444
+#   run-hermes.sh -b 8500 -n proj2     # second session on a different port
 #   run-hermes.sh -- setup             # run the setup wizard
 #
 # Build once:
@@ -43,6 +51,8 @@ NAME=""
 ISOLATE=0
 HOST=0
 CONFIG_EXPLICIT=0
+BROWSER=0
+VNC_PORT="${VNC_PORT:-8444}"
 
 # Persistent sccache compile cache, shared with the host. Pin to the host default
 # (~/.cache/sccache) unless SCCACHE_DIR is already exported. Created before the
@@ -86,15 +96,25 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-# Extract the long flags --edit/--del before getopts (which only handles short opts).
-# Stop at `--` so agent passthrough args keep their own --edit, if any.
+# Extract --edit/--del and -b [PORT] before getopts (getopts handles neither long
+# flags nor optional-argument flags). Stop at `--` so agent passthrough args are
+# left alone. -b may be followed by a bare number to override the view port, handy
+# when running more than one browser session at once: `-b 8500`.
 EDIT=0
 DEL=0
-_args=(); _stop=0
+_args=(); _stop=0; _b_seen=0
 for _a in "$@"; do
+  if [ "$_stop" -eq 0 ] && [ "$_b_seen" -eq 1 ]; then
+    _b_seen=0
+    case "$_a" in
+      ''|*[!0-9]*) : ;;               # not a bare number -> not a port
+      *) VNC_PORT="$_a"; continue ;;   # consume as the custom view port
+    esac
+  fi
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "-b" ]; then BROWSER=1; _b_seen=1; continue; fi
   _args+=("$_a")
 done
 set -- "${_args[@]}"
@@ -111,7 +131,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,28p' "$0"; exit 0 ;;
+    h) sed -n '2,/run the setup wizard/p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -165,12 +185,29 @@ if [ "$EDIT" -eq 1 ]; then
   exec $ED "$CONFIG_SRC"
 fi
 
+# Browser view (-b): publish the KasmVNC port when the container is created, and
+# set START_VNC so with-vnc brings up KasmVNC + Openbox. A named container is
+# created with `--entrypoint sleep` and we `exec` into it, bypassing the image
+# entrypoint, so the exec is prefixed with `with-vnc`; the unnamed path already
+# has with-vnc as its entrypoint. For a reused named container the port mapping
+# is fixed from its first creation, so pass -b on the run that creates it.
+BROWSER_PORT=(); BROWSER_ENV=(); WRAP=()
+if [ "$BROWSER" -eq 1 ]; then
+  BROWSER_PORT=(-p "$VNC_PORT:$VNC_PORT")
+  BROWSER_ENV=(-e START_VNC=1 -e "VNC_PORT=$VNC_PORT")
+  [ -n "${VNC_PASSWORD:-}" ] && BROWSER_ENV+=(-e "VNC_PASSWORD=$VNC_PASSWORD")
+  [ -n "${VNC_GEOMETRY:-}" ] && BROWSER_ENV+=(-e "VNC_GEOMETRY=$VNC_GEOMETRY")
+  WRAP=(with-vnc)
+  echo "run-hermes.sh: browser view -> https://localhost:${VNC_PORT}/  (self-signed; user=kasm)" >&2
+fi
+
 # --- Named container: a persistent sandbox we exec the agent into ---
 if [ -n "$NAME" ]; then
   if docker ps -aq -f "name=^${NAME}$" | grep -q .; then
     docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
   else
     docker run -d --name "$NAME" $USER_FLAG \
+      ${BROWSER_PORT[@]+"${BROWSER_PORT[@]}"} \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
@@ -180,11 +217,14 @@ if [ -n "$NAME" ]; then
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec docker exec -it $USER_FLAG ${BROWSER_ENV[@]+"${BROWSER_ENV[@]}"} \
+    -w /work "$NAME" ${WRAP[@]+"${WRAP[@]}"} "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
 exec docker run --rm -it $USER_FLAG \
+  ${BROWSER_PORT[@]+"${BROWSER_PORT[@]}"} \
+  ${BROWSER_ENV[@]+"${BROWSER_ENV[@]}"} \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \

@@ -5,11 +5,12 @@
 # build-args match the invoking user so files written in the container are
 # owned correctly on the host.
 #
-#   agentic-dev-base:latest   (Dockerfile)        <- shared base, built first
-#   agentic-claude:latest     (Dockerfile.claude)
-#   agentic-goose:latest      (Dockerfile.goose)
-#   agentic-hermes:latest     (Dockerfile.hermes)
-#   agentic-pi:latest         (Dockerfile.pi)
+#   agentic-dev-base:latest     (Dockerfile)         <- shared base, built first
+#   agentic-browser-base:latest (Dockerfile.browser) <- base + KasmVNC + Camoufox
+#   agentic-claude:latest       (Dockerfile.claude)
+#   agentic-goose:latest        (Dockerfile.goose)
+#   agentic-hermes:latest       (Dockerfile.hermes)  <- FROM agentic-browser-base
+#   agentic-pi:latest           (Dockerfile.pi)
 #
 # Usage:
 #   ./build.sh                 # build base + all agents (all cached)
@@ -106,6 +107,13 @@ fi
 
 echo "==> Building agentic-dev-base:latest"
 docker build "${docker_flags[@]}" "${base_flags[@]}" -t agentic-dev-base:latest .
+
+# Shared browser layer (KasmVNC + Camoufox) that hermes is re-based on. Built
+# right after the base so `--base-only` refreshes both base images together.
+echo "==> Building agentic-browser-base:latest  (Dockerfile.browser)"
+docker build "${docker_flags[@]}" "${base_flags[@]}" -f Dockerfile.browser \
+  --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
+  -t agentic-browser-base:latest .
 
 if [ "$base_only" -eq 1 ]; then
   echo "==> Done (base only)."

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Run the Camoufox venv's Python. A wrapper (not a symlink): a symlink straight
+# to the venv interpreter makes CPython resolve its prefix from /usr/local/bin,
+# miss pyvenv.cfg, and fall back to the system site-packages without camoufox.
+# exec'ing the real interpreter by absolute path keeps the venv intact.
+exec /opt/camoufox/.venv/bin/python "$@"
