@@ -185,20 +185,54 @@ if [ "$EDIT" -eq 1 ]; then
   exec $ED "$CONFIG_SRC"
 fi
 
-# Browser view (-b): publish the KasmVNC port when the container is created, and
-# set START_VNC so with-vnc brings up KasmVNC + Openbox. A named container is
-# created with `--entrypoint sleep` and we `exec` into it, bypassing the image
-# entrypoint, so the exec is prefixed with `with-vnc`; the unnamed path already
-# has with-vnc as its entrypoint. For a reused named container the port mapping
-# is fixed from its first creation, so pass -b on the run that creates it.
-BROWSER_PORT=(); BROWSER_ENV=(); WRAP=()
+# Volume mounts shared by every launch path.
+MOUNTS=(
+  -v "$CONFIG_SRC":"$CONFIG_DST"
+  -v "$WORK_DIR":/work
+  -v "$SCCACHE_CACHE":/home/dev/.cache/sccache
+  -v "$CARGO_HOST/git":/home/dev/.cargo/git
+  -v "$CARGO_HOST/registry":/home/dev/.cargo/registry
+)
+
+# --- Browser view (-b) ---
+# KasmVNC must run as the container's OWN process, never sharing the agent's
+# terminal (starting Xvnc in the agent's process grabs its TTY and the agent
+# exits immediately). So boot a detached container that starts KasmVNC then
+# idles, and `docker exec` the interactive agent into it on a clean TTY.
 if [ "$BROWSER" -eq 1 ]; then
-  BROWSER_PORT=(-p "$VNC_PORT:$VNC_PORT")
-  BROWSER_ENV=(-e START_VNC=1 -e "VNC_PORT=$VNC_PORT")
-  [ -n "${VNC_PASSWORD:-}" ] && BROWSER_ENV+=(-e "VNC_PASSWORD=$VNC_PASSWORD")
-  [ -n "${VNC_GEOMETRY:-}" ] && BROWSER_ENV+=(-e "VNC_GEOMETRY=$VNC_GEOMETRY")
-  WRAP=(with-vnc)
-  echo "run-hermes.sh: browser view -> https://localhost:${VNC_PORT}/  (self-signed; user=kasm)" >&2
+  # Generate a password when none is given: the detached boot's own log isn't on
+  # your terminal, so we must know it here to print it. Bounded pipe (head -c on
+  # the finite source, not on the stream) so no SIGPIPE trips `set -o pipefail`.
+  if [ -z "${VNC_PASSWORD:-}" ]; then
+    VNC_PASSWORD="$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')"
+    VNC_PASSWORD="${VNC_PASSWORD:0:12}"
+  fi
+
+  CT="$NAME"; EPHEMERAL=0
+  [ -z "$CT" ] && { CT="hermes-view-$$"; EPHEMERAL=1; }
+
+  if docker ps -aq -f "name=^${CT}$" | grep -q .; then
+    docker ps -q -f "name=^${CT}$" | grep -q . || docker start "$CT" >/dev/null
+  else
+    docker run -d --name "$CT" $USER_FLAG \
+      -e START_VNC=1 -e "VNC_PORT=$VNC_PORT" -e "VNC_PASSWORD=$VNC_PASSWORD" \
+      ${VNC_GEOMETRY:+-e "VNC_GEOMETRY=$VNC_GEOMETRY"} \
+      -p "$VNC_PORT:$VNC_PORT" \
+      "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
+      -w /work --entrypoint with-vnc \
+      "$IMAGE" sleep infinity >/dev/null
+  fi
+
+  echo "run-hermes.sh: browser view -> https://localhost:${VNC_PORT}/  (user=kasm  pass=$VNC_PASSWORD)" >&2
+
+  # Ephemeral (no -n): run in the foreground so the EXIT trap can clean up (exec
+  # would replace this shell and skip the trap). Named: exec and leave it running.
+  if [ "$EPHEMERAL" -eq 1 ]; then
+    trap 'docker rm -f "$CT" >/dev/null 2>&1' EXIT INT TERM
+    docker exec -it $USER_FLAG -w /work "$CT" "$AGENT_CMD" "$@"
+    exit $?
+  fi
+  exec docker exec -it $USER_FLAG -w /work "$CT" "$AGENT_CMD" "$@"
 fi
 
 # --- Named container: a persistent sandbox we exec the agent into ---
@@ -207,29 +241,15 @@ if [ -n "$NAME" ]; then
     docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
   else
     docker run -d --name "$NAME" $USER_FLAG \
-      ${BROWSER_PORT[@]+"${BROWSER_PORT[@]}"} \
-      -v "$CONFIG_SRC":"$CONFIG_DST" \
-      -v "$WORK_DIR":/work \
-      -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
-      -v "$CARGO_HOST/git":/home/dev/.cargo/git \
-      -v "$CARGO_HOST/registry":/home/dev/.cargo/registry \
-      ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
+      "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG ${BROWSER_ENV[@]+"${BROWSER_ENV[@]}"} \
-    -w /work "$NAME" ${WRAP[@]+"${WRAP[@]}"} "$AGENT_CMD" "$@"
+  exec docker exec -it $USER_FLAG -w /work "$NAME" "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
 exec docker run --rm -it $USER_FLAG \
-  ${BROWSER_PORT[@]+"${BROWSER_PORT[@]}"} \
-  ${BROWSER_ENV[@]+"${BROWSER_ENV[@]}"} \
-  -v "$CONFIG_SRC":"$CONFIG_DST" \
-  -v "$WORK_DIR":/work \
-  -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
-  -v "$CARGO_HOST/git":/home/dev/.cargo/git \
-  -v "$CARGO_HOST/registry":/home/dev/.cargo/registry \
-  ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
+  "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
   -w /work \
   "$IMAGE" "$@"

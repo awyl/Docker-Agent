@@ -249,16 +249,18 @@ Claude-only `--mem-from`/`--mem-to`).
 `run-goose.sh` with no extra args starts an interactive `goose session`;
 `run-hermes.sh` with no args starts the interactive Hermes CLI.
 
-**Browser view (`run-hermes.sh -b [PORT]`).** Starts KasmVNC alongside Hermes and
-publishes it — open `https://localhost:8444/` (self-signed; accept the warning)
-and log in as user `kasm`. When the agent (or you, via `camoufox-open URL`) opens
-Camoufox, it renders in that view. Pass a port to run several sessions at once,
-e.g. `run-hermes.sh -b 8500 -n proj2` (the number right after `-b` overrides the
-port; `VNC_PORT` env does the same). Other knobs: `VNC_PASSWORD` (random and
-printed to the log if unset; **min 6 chars**), `VNC_GEOMETRY` (default `1280x800`).
-For a named container, pass `-b [PORT]` on the run that first creates it — the
-published port is fixed at creation. Use a Chromium-based viewer for seamless
-clipboard.
+**Browser view (`run-hermes.sh -b [PORT]`).** Boots KasmVNC as the container's own
+background service and runs Hermes in your terminal as usual (they don't share a
+TTY — running the VNC server in the agent's own process would steal its terminal
+and drop you straight back out). Open `https://localhost:8444/` (self-signed;
+accept the warning) and log in as user `kasm`; the password is printed on the
+launch line (`pass=…`), or set `VNC_PASSWORD` (min 6 chars). When the agent (or
+you, via `camoufox-open URL`) opens Camoufox, it renders in that view. Pass a port
+to run several sessions at once, e.g. `run-hermes.sh -b 8500 -n proj2` (the number
+right after `-b` overrides the port; `VNC_PORT` env does the same). `VNC_GEOMETRY`
+defaults to `1280x800`. Without `-n` the view container is ephemeral and removed
+when you exit; with `-n` it persists (pass `-b` on the run that first creates it).
+Use a Chromium-based viewer for seamless clipboard.
 
 Examples:
 
