@@ -2,7 +2,7 @@
 # Run the Hermes agent in a container.
 #
 # Usage:
-#   run-hermes.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [-b [PORT]] [--edit] [-- <hermes args>]
+#   run-hermes.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <hermes args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<work-dir-name>/hermes. Fresh config; log in
@@ -17,12 +17,6 @@
 #                   confirm. Only valid for the isolated config (not -H/-c).
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
-#   -b [PORT]       Browser view: start KasmVNC + Camoufox and publish the view.
-#                   Open https://localhost:PORT (default 8444, or VNC_PORT env).
-#                   Give a port to run several sessions at once, e.g. -b 8500.
-#                   Env: VNC_PASSWORD (random if unset, printed to log), VNC_GEOMETRY
-#                   (default 1280x800). Chromium viewer recommended for clipboard;
-#                   HTTPS is self-signed (accept the warning).
 #   anything after the options is passed through to `hermes`.
 #   With no hermes args, the interactive CLI starts.
 #
@@ -31,9 +25,9 @@
 #   run-hermes.sh -H                   # host ~/.hermes config
 #   run-hermes.sh -w ~/code/myproj     # isolated config, different repo
 #   run-hermes.sh -n myproj            # create/reuse "myproj"
-#   run-hermes.sh -b                   # browser view at https://localhost:8444
-#   run-hermes.sh -b 8500 -n proj2     # second session on a different port
 #   run-hermes.sh -- setup             # run the setup wizard
+#
+#   For the browser view, see run-browser.sh.
 #
 # Build once:
 #   docker build -t agentic-dev-base:latest .
@@ -51,8 +45,6 @@ NAME=""
 ISOLATE=0
 HOST=0
 CONFIG_EXPLICIT=0
-BROWSER=0
-VNC_PORT="${VNC_PORT:-8444}"
 
 # Persistent sccache compile cache, shared with the host. Pin to the host default
 # (~/.cache/sccache) unless SCCACHE_DIR is already exported. Created before the
@@ -96,25 +88,15 @@ if [ -z "${USER_FLAG+x}" ]; then
   fi
 fi
 
-# Extract --edit/--del and -b [PORT] before getopts (getopts handles neither long
-# flags nor optional-argument flags). Stop at `--` so agent passthrough args are
-# left alone. -b may be followed by a bare number to override the view port, handy
-# when running more than one browser session at once: `-b 8500`.
+# Extract --edit/--del before getopts (which handles no long flags). Stop at `--`
+# so agent passthrough args are left alone.
 EDIT=0
 DEL=0
-_args=(); _stop=0; _b_seen=0
+_args=(); _stop=0
 for _a in "$@"; do
-  if [ "$_stop" -eq 0 ] && [ "$_b_seen" -eq 1 ]; then
-    _b_seen=0
-    case "$_a" in
-      ''|*[!0-9]*) : ;;               # not a bare number -> not a port
-      *) VNC_PORT="$_a"; continue ;;   # consume as the custom view port
-    esac
-  fi
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; continue; fi
-  if [ "$_stop" -eq 0 ] && [ "$_a" = "-b" ]; then BROWSER=1; _b_seen=1; continue; fi
   _args+=("$_a")
 done
 set -- "${_args[@]}"
@@ -193,47 +175,6 @@ MOUNTS=(
   -v "$CARGO_HOST/git":/home/dev/.cargo/git
   -v "$CARGO_HOST/registry":/home/dev/.cargo/registry
 )
-
-# --- Browser view (-b) ---
-# KasmVNC must run as the container's OWN process, never sharing the agent's
-# terminal (starting Xvnc in the agent's process grabs its TTY and the agent
-# exits immediately). So boot a detached container that starts KasmVNC then
-# idles, and `docker exec` the interactive agent into it on a clean TTY.
-if [ "$BROWSER" -eq 1 ]; then
-  # Generate a password when none is given: the detached boot's own log isn't on
-  # your terminal, so we must know it here to print it. Bounded pipe (head -c on
-  # the finite source, not on the stream) so no SIGPIPE trips `set -o pipefail`.
-  if [ -z "${VNC_PASSWORD:-}" ]; then
-    VNC_PASSWORD="$(head -c 32 /dev/urandom | base64 | tr -dc 'a-zA-Z0-9')"
-    VNC_PASSWORD="${VNC_PASSWORD:0:12}"
-  fi
-
-  CT="$NAME"; EPHEMERAL=0
-  [ -z "$CT" ] && { CT="hermes-view-$$"; EPHEMERAL=1; }
-
-  if docker ps -aq -f "name=^${CT}$" | grep -q .; then
-    docker ps -q -f "name=^${CT}$" | grep -q . || docker start "$CT" >/dev/null
-  else
-    docker run -d --name "$CT" $USER_FLAG \
-      -e START_VNC=1 -e "VNC_PORT=$VNC_PORT" -e "VNC_PASSWORD=$VNC_PASSWORD" \
-      ${VNC_GEOMETRY:+-e "VNC_GEOMETRY=$VNC_GEOMETRY"} \
-      -p "$VNC_PORT:$VNC_PORT" \
-      "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
-      -w /work --entrypoint with-vnc \
-      "$IMAGE" sleep infinity >/dev/null
-  fi
-
-  echo "run-hermes.sh: browser view -> https://localhost:${VNC_PORT}/  (user=kasm  pass=$VNC_PASSWORD)" >&2
-
-  # Ephemeral (no -n): run in the foreground so the EXIT trap can clean up (exec
-  # would replace this shell and skip the trap). Named: exec and leave it running.
-  if [ "$EPHEMERAL" -eq 1 ]; then
-    trap 'docker rm -f "$CT" >/dev/null 2>&1' EXIT INT TERM
-    docker exec -it $USER_FLAG -w /work "$CT" "$AGENT_CMD" "$@"
-    exit $?
-  fi
-  exec docker exec -it $USER_FLAG -w /work "$CT" "$AGENT_CMD" "$@"
-fi
 
 # --- Named container: a persistent sandbox we exec the agent into ---
 if [ -n "$NAME" ]; then
