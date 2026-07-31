@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Container entrypoint for the browser view. Prepares the Wayland runtime
+# environment, then execs labwc as PID1. labwc's autostart (/etc/labwc/autostart)
+# brings up wlr-randr, wayvnc and websockify — it runs after the compositor is
+# live, so nothing here has to poll for the wayland socket.
+#
+# Env knobs:
+#   VIEW_GEOMETRY=1280x800   headless output size
+#   VIEW_PORT=8444           container port websockify serves noVNC on
+#
+# No TLS and no password: wayvnc binds container-localhost and only websockify's
+# port is exposed, which run-browser.sh publishes to 127.0.0.1 on the host.
+set -euo pipefail
+
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/xdg}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 0700 "$XDG_RUNTIME_DIR"
+
+# Headless wlroots backend with the software renderer: no GPU, no /dev/dri, no
+# extra host privilege. WLR_LIBINPUT_NO_DEVICES stops wlroots demanding input
+# devices that a container does not have.
+export WLR_BACKENDS="${WLR_BACKENDS:-headless}"
+export WLR_LIBINPUT_NO_DEVICES=1
+export WLR_RENDERER="${WLR_RENDERER:-pixman}"
+
+export VIEW_GEOMETRY="${VIEW_GEOMETRY:-1280x800}"
+export VIEW_PORT="${VIEW_PORT:-8444}"
+
+# -C /etc/labwc, never ~/.config/labwc: $HOME is /home/dev and its subdirectories
+# are runtime bind-mounts.
+exec labwc -C /etc/labwc

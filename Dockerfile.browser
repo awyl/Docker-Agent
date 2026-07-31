@@ -76,10 +76,13 @@ RUN chown -R "${UID}:${GID}" /home/dev/.cache
 RUN mkdir -p /root/.cache && ln -sfn /home/dev/.cache/camoufox /root/.cache/camoufox
 
 # Helper scripts last, so tweaking them doesn't invalidate the ~700MB camoufox
-# fetch layer above. with-vnc (entrypoint wrapper), camoufox-open (launcher),
-# camoufox-py (venv python).
-COPY browser/with-vnc browser/camoufox-open browser/camoufox-py /usr/local/bin/
-RUN chmod 0755 /usr/local/bin/with-vnc /usr/local/bin/camoufox-open /usr/local/bin/camoufox-py
+# fetch layer above. with-view (entrypoint), camoufox-open (launcher),
+# camoufox-py (venv python), plus the labwc config that autostart depends on.
+COPY browser/with-view browser/camoufox-open browser/camoufox-py /usr/local/bin/
+COPY browser/labwc-rc.xml /etc/labwc/rc.xml
+COPY browser/labwc-autostart /etc/labwc/autostart
+RUN chmod 0755 /usr/local/bin/with-view /usr/local/bin/camoufox-open \
+      /usr/local/bin/camoufox-py /etc/labwc/autostart
 
 # Stays root so child agent images can install their own packages. Every shell —
 # including `docker exec`, which does not inherit the entrypoint's environment —
