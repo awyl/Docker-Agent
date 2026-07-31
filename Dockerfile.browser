@@ -71,9 +71,8 @@ RUN chown -R "${UID}:${GID}" /home/dev/.cache
 
 # Rootless Docker runs the container as root (`--user 0:0`) so bind mounts stay
 # writable, but Firefox aborts as root when $HOME is owned by someone else. The
-# camoufox-py wrapper therefore switches root to HOME=/root; this symlink is what
-# lets that root still find the browser fetched into dev's cache above.
-RUN mkdir -p /root/.cache && ln -sfn /home/dev/.cache/camoufox /root/.cache/camoufox
+# camoufox-py wrapper handles that by switching root to HOME=/root with
+# XDG_CACHE_HOME pointed back at the cache above.
 
 # Helper scripts last, so tweaking them doesn't invalidate the ~700MB camoufox
 # fetch layer above. with-view (entrypoint), camoufox-open (launcher),
