@@ -1,7 +1,7 @@
 #!/bin/sh
 # Run by labwc once the compositor is up. Ordering is therefore guaranteed
 # without any wait-for-socket polling — that polling is what produced the
-# launch bugs in the KasmVNC era.
+# launch bugs in the previous VNC stack.
 #
 # Failure of wlr-randr is non-fatal: the default headless mode stands and the
 # view still works, just at the wrong size.
