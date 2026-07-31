@@ -3,4 +3,15 @@
 # to the venv interpreter makes CPython resolve its prefix from /usr/local/bin,
 # miss pyvenv.cfg, and fall back to the system site-packages without camoufox.
 # exec'ing the real interpreter by absolute path keeps the venv intact.
+#
+# Firefox refuses to start as root when $HOME is owned by a different user, and
+# that is exactly the rootless-Docker case: the runners pass `--user 0:0` (so
+# bind mounts stay writable) while HOME is /home/dev. Give root its own home —
+# /root/.cache/camoufox symlinks to dev's cache, so the browser is still found.
+# Non-root callers keep whatever HOME they were given.
+if [ "$(id -u)" = "0" ]; then
+    HOME=/root
+    export HOME
+fi
+
 exec /opt/camoufox/.venv/bin/python "$@"

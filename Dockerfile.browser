@@ -1,56 +1,46 @@
 # syntax=docker/dockerfile:1
 #
-# Reusable browser layer: agentic-dev-base + KasmVNC (web-native remote view) +
-# Camoufox (stealth Firefox, driven by Playwright). Sits BETWEEN the base and the
-# agent images so any agent can be re-based onto it to drive & remotely watch a
-# browser. Build order:
+# Reusable browser layer: agentic-dev-base + a Wayland remote view (labwc +
+# wayvnc + noVNC) + Camoufox (stealth Firefox, driven by Playwright). Sits
+# BETWEEN the base and the agent images so any agent can be re-based onto it to
+# drive & remotely watch a browser. Build order:
 #   docker build -t agentic-dev-base:latest .
 #   docker build -f Dockerfile.browser \
 #     --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
 #     -t agentic-browser-base:latest .
 #
-# Remote view: a `with-vnc`-wrapped entrypoint starts KasmVNC on :1 and serves it
-# over HTTPS (self-signed) on VNC_PORT (default 8444). Camoufox runs non-headless
-# on that display, so you watch the exact browser the agent controls. KasmVNC's
-# adaptive WebP/JPEG encoding keeps bandwidth low without a WebRTC/GPU stack.
+# Remote view: the `with-view` entrypoint execs labwc as PID1; labwc's autostart
+# brings up wayvnc and websockify (serving noVNC). Camoufox runs non-headless on
+# that compositor, so you watch the exact browser the agent controls. No TLS and
+# no password — run-browser.sh publishes the port to 127.0.0.1 only.
 FROM agentic-dev-base:latest
 
 ARG UID=1000
 ARG GID=1000
 
-# KasmVNC has no Debian-trixie build; the kali-rolling package tracks Debian
-# testing (trixie's libc/toolchain), so it is the compatible choice. Pin the
-# version; override with --build-arg KASMVNC_VERSION=X.Y.Z.
-ARG KASMVNC_VERSION=1.3.4
-ARG TARGETARCH
-
 ENV DEBIAN_FRONTEND=noninteractive
 
-# --- KasmVNC + minimal X stack + Firefox/Camoufox runtime libs, one layer ---
+# --- Wayland view stack + Firefox/Camoufox runtime libs, one layer ---
+# Everything here is Debian trixie main: no third-party repo, no compilation.
+#   labwc      wlroots compositor, runs headless (WLR_BACKENDS=headless)
+#   wayvnc     RFB server that attaches to labwc via wlr-screencopy
+#   novnc      browser client, served as static files from /usr/share/novnc
+#   websockify serves those files and proxies WebSocket -> wayvnc's TCP port
 # t64 suffixes (libasound2t64, libgtk-3-0t64) are the Debian trixie time64 names.
 RUN set -eux; \
-    case "${TARGETARCH:-amd64}" in \
-        amd64) arch=amd64 ;; \
-        arm64) arch=arm64 ;; \
-        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        openbox \
-        ssl-cert \
-        xauth x11-xserver-utils \
-        xfonts-base \
-        dbus-x11 \
+        labwc wayvnc novnc websockify wlr-randr wl-clipboard \
+        dbus \
+        libgl1-mesa-dri \
         libgtk-3-0t64 libx11-xcb1 libasound2t64 libdbus-glib-1-2 \
         libgdk-pixbuf-2.0-0 libpangocairo-1.0-0 libxcomposite1 libxdamage1 \
         libxfixes3 libxrandr2 libxkbcommon0 libatk1.0-0t64 libatk-bridge2.0-0t64 \
         libcups2t64 libnss3 libxss1 \
         fonts-liberation fonts-noto-core; \
-    curl -fsSL -o /tmp/kasmvnc.deb \
-        "https://github.com/kasmtech/KasmVNC/releases/download/v${KASMVNC_VERSION}/kasmvncserver_kali-rolling_${KASMVNC_VERSION}_${arch}.deb"; \
-    apt-get install -y --no-install-recommends /tmp/kasmvnc.deb; \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/* /usr/share/doc/* /usr/share/man/* /tmp/*; \
-    command -v vncserver; command -v kasmvncpasswd
+    command -v labwc; command -v wayvnc; command -v websockify; \
+    test -f /usr/share/novnc/vnc.html
 
 # --- Camoufox in its own venv, launcher symlinked onto PATH ---
 # uv (from the base) fetches Python 3.11. Kept out of any runtime-mounted dir.
@@ -79,9 +69,11 @@ RUN set -eux; \
 RUN HOME=/home/dev camoufox fetch
 RUN chown -R "${UID}:${GID}" /home/dev/.cache
 
-# KasmVNC serves HTTPS from the snakeoil key (owned root:ssl-cert, group-
-# readable); dev must be in ssl-cert to read it, else the VNC server can't start.
-RUN usermod -aG ssl-cert dev
+# Rootless Docker runs the container as root (`--user 0:0`) so bind mounts stay
+# writable, but Firefox aborts as root when $HOME is owned by someone else. The
+# camoufox-py wrapper therefore switches root to HOME=/root; this symlink is what
+# lets that root still find the browser fetched into dev's cache above.
+RUN mkdir -p /root/.cache && ln -sfn /home/dev/.cache/camoufox /root/.cache/camoufox
 
 # Helper scripts last, so tweaking them doesn't invalidate the ~700MB camoufox
 # fetch layer above. with-vnc (entrypoint wrapper), camoufox-open (launcher),
@@ -89,10 +81,15 @@ RUN usermod -aG ssl-cert dev
 COPY browser/with-vnc browser/camoufox-open browser/camoufox-py /usr/local/bin/
 RUN chmod 0755 /usr/local/bin/with-vnc /usr/local/bin/camoufox-open /usr/local/bin/camoufox-py
 
-# Stays root so child agent images can install their own packages. Every shell
-# gets DISPLAY=:1 so `camoufox-open` / Playwright target the KasmVNC display even
-# under `docker exec` (which does not inherit the entrypoint's environment).
-ENV DISPLAY=:1
+# Stays root so child agent images can install their own packages. Every shell —
+# including `docker exec`, which does not inherit the entrypoint's environment —
+# needs to find the compositor. XDG_RUNTIME_DIR is a fixed path rather than
+# /run/user/$(id -u) because the UID differs between the rootful `dev` path and
+# the rootless `--user 0:0` path, and only a fixed value can live in image ENV.
+# MOZ_ENABLE_WAYLAND makes Camoufox a native Wayland client.
+ENV WAYLAND_DISPLAY=wayland-0 \
+    XDG_RUNTIME_DIR=/tmp/xdg \
+    MOZ_ENABLE_WAYLAND=1
 
 WORKDIR /work
 CMD ["bash"]
