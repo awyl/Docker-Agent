@@ -3,4 +3,19 @@
 # to the venv interpreter makes CPython resolve its prefix from /usr/local/bin,
 # miss pyvenv.cfg, and fall back to the system site-packages without camoufox.
 # exec'ing the real interpreter by absolute path keeps the venv intact.
+#
+# Firefox refuses to start as root when $HOME is owned by a different user, and
+# that is exactly the rootless-Docker case: the runners pass `--user 0:0` (so
+# bind mounts stay writable) while HOME is /home/dev. Give root its own home,
+# then point the cache back at dev's, where `camoufox fetch` put the ~700MB
+# browser at build time. XDG_CACHE_HOME rather than a symlink into /root/.cache:
+# agent layers built on top of this one run `rm -rf /root/.cache`, which would
+# silently delete a symlink and leave the browser unfindable at runtime.
+# Non-root callers keep whatever HOME and cache they were given.
+if [ "$(id -u)" = "0" ]; then
+    HOME=/root
+    XDG_CACHE_HOME="${XDG_CACHE_HOME:-/home/dev/.cache}"
+    export HOME XDG_CACHE_HOME
+fi
+
 exec /opt/camoufox/.venv/bin/python "$@"

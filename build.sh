@@ -6,7 +6,7 @@
 # owned correctly on the host.
 #
 #   agentic-dev-base:latest     (Dockerfile)         <- shared base, built first
-#   agentic-browser-base:latest (Dockerfile.browser) <- base + KasmVNC + Camoufox
+#   agentic-browser-base:latest (Dockerfile.browser) <- base + labwc/wayvnc/noVNC + Camoufox
 #   agentic-claude:latest       (Dockerfile.claude)
 #   agentic-goose:latest        (Dockerfile.goose)
 #   agentic-hermes:latest       (Dockerfile.hermes)  <- FROM agentic-browser-base
@@ -108,7 +108,7 @@ fi
 echo "==> Building agentic-dev-base:latest"
 docker build "${docker_flags[@]}" "${base_flags[@]}" -t agentic-dev-base:latest .
 
-# Shared browser layer (KasmVNC + Camoufox) that hermes is re-based on. Built
+# Shared browser layer (Wayland view + Camoufox) that hermes is re-based on. Built
 # right after the base so `--base-only` refreshes both base images together.
 echo "==> Building agentic-browser-base:latest  (Dockerfile.browser)"
 docker build "${docker_flags[@]}" "${base_flags[@]}" -f Dockerfile.browser \

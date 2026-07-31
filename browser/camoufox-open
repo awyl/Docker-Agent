@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Open a URL in Camoufox (visible, non-headless) on the current $DISPLAY and hold
-# it open so you can eyeball it through the KasmVNC view. Ctrl-C to quit.
+# Open a URL in Camoufox (visible, non-headless) on the container's Wayland
+# compositor and hold it open so you can watch it through the noVNC view.
+# Ctrl-C to quit.
 #
 #   camoufox-open [URL]
 #
-# Needs a live display (run inside a `START_VNC=1` container, or set DISPLAY to
-# an X server). Defaults to a fingerprint test page so you can confirm stealth.
+# Needs a live compositor: run inside a container booted by run-browser.sh.
+# Defaults to a fingerprint test page so you can confirm stealth.
 set -euo pipefail
 
 url="${1:-https://abrahamjuliot.github.io/creepjs/}"
@@ -18,7 +19,7 @@ url = sys.argv[1]
 with Camoufox(headless=False) as browser:
     page = browser.new_page()
     page.goto(url)
-    print(f"[camoufox-open] {url} open on DISPLAY={os.environ.get('DISPLAY')}. Ctrl-C to quit.")
+    print(f"[camoufox-open] {url} open on WAYLAND_DISPLAY={os.environ.get('WAYLAND_DISPLAY')}. Ctrl-C to quit.")
     try:
         page.wait_for_timeout(10**9)
     except KeyboardInterrupt:

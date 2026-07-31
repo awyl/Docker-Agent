@@ -10,10 +10,10 @@
 # UID/GID are build args so files written into the mounted config/repo
 # stay owned by your host user.
 
-# Re-based on the browser layer (KasmVNC + Camoufox) so the hermes agent can
-# drive a stealth browser and you can watch it remotely. UID/GID are consumed by
-# that layer (which creates the `dev` user); declared here so build.sh can pass
-# them without an "unused build arg" warning.
+# Re-based on the browser layer (labwc + Camoufox) so the hermes agent can drive
+# a stealth browser. UID/GID are consumed by that layer (which creates the `dev`
+# user); declared here so build.sh can pass them without an "unused build arg"
+# warning. For the watchable view, boot this image with run-browser.sh.
 FROM agentic-browser-base:latest
 
 ARG UID=1000
@@ -31,6 +31,12 @@ ARG HERMES_REF=main
 # UV_PYTHON_INSTALL_DIR puts the managed interpreter under /opt (world-
 # traversable) instead of the default /root/.local/share (mode 700), so the
 # non-root `dev` user can actually exec the venv's python at runtime.
+#
+# The install is EDITABLE (-e). Upstream's build backend refuses to produce a
+# wheel or sdist ("Hermes is distributed via the shell installer, Docker image,
+# or Nix") and points developers at an editable install instead. That is safe
+# here: /opt/hermes is a git clone baked into the image, not a runtime mount, so
+# the tree the .pth points at is always present and read-only in practice.
 ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
 RUN set -eux; \
     apt-get update; \
@@ -39,9 +45,9 @@ RUN set -eux; \
     git clone --depth 1 --branch "${HERMES_REF}" \
         https://github.com/NousResearch/hermes-agent.git /opt/hermes; \
     uv venv /opt/hermes/.venv --python 3.11; \
-    VIRTUAL_ENV=/opt/hermes/.venv uv pip install --no-cache "/opt/hermes/.[all]"; \
+    VIRTUAL_ENV=/opt/hermes/.venv uv pip install --no-cache -e "/opt/hermes[all]"; \
     ln -s /opt/hermes/.venv/bin/hermes /usr/local/bin/hermes; \
-    chmod -R a+rX /opt/uv/python; \
+    chmod -R a+rX /opt/uv/python /opt/hermes; \
     rm -rf /root/.cache /tmp/*; \
     test -x /usr/local/bin/hermes
 
@@ -51,7 +57,7 @@ USER dev
 ENV HOME=/home/dev
 WORKDIR /work
 
-# with-vnc starts KasmVNC + Openbox when START_VNC=1 (set by run-hermes.sh -b),
-# then execs hermes on that display; a no-op passthrough otherwise. Bare `hermes`
-# starts the interactive CLI; extra args from `docker run` are appended.
-ENTRYPOINT ["with-vnc", "hermes"]
+# Bare `hermes` starts the interactive CLI; extra args from `docker run` are
+# appended. The browser view uses a different entrypoint (`with-view`), which
+# run-browser.sh selects explicitly.
+ENTRYPOINT ["hermes"]

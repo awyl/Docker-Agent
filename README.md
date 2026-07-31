@@ -3,7 +3,7 @@
 Docker images for agentic development:
 
 1. **`agentic-dev-base`** — a language/tooling base image (Rust, Node.js, Bun, Python3, plus the common Unix toolkit).
-2. **`agentic-browser-base`** — base + [KasmVNC](https://github.com/kasmtech/KasmVNC) (web remote view) + [Camoufox](https://camoufox.com) (stealth Firefox). A reusable layer for agents that drive a browser.
+2. **`agentic-browser-base`** — base + [labwc](https://labwc.github.io/) + [wayvnc](https://github.com/any1/wayvnc) + [noVNC](https://novnc.com/) (web remote view) + [Camoufox](https://camoufox.com) (stealth Firefox). A reusable layer for agents that drive a browser.
 3. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
 4. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
 5. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
@@ -79,41 +79,51 @@ Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
 so it uses file-based secrets (`~/.config/goose/secrets.yaml`) instead of a
 system keyring, which doesn't exist in a container.
 
-### `agentic-browser-base` (base + KasmVNC + Camoufox)
+### `agentic-browser-base` (base + Wayland view + Camoufox)
 
-A reusable layer between the base and any browser-driving agent. Adds:
+A reusable layer between the base and any browser-driving agent. Everything in
+the view stack comes from Debian trixie main — no third-party repo, no
+compilation. Adds:
 
-- **[KasmVNC](https://github.com/kasmtech/KasmVNC)** — a web-native VNC server
-  (its own `Xvnc` X server + Openbox WM). You watch the session from any browser
-  over HTTPS; its adaptive WebP/JPEG encoding keeps bandwidth low without a
-  WebRTC/GPU stack. The `kali-rolling` package is used (KasmVNC ships no trixie
-  build; kali-rolling tracks Debian testing, matching trixie's libc).
+- **[labwc](https://labwc.github.io/)** — a wlroots compositor, run headless
+  (`WLR_BACKENDS=headless`, software renderer). It is the container's PID1, so
+  the compositor's death is the container's death.
+- **[wayvnc](https://github.com/any1/wayvnc)** — an RFB server that attaches to
+  labwc via `wlr-screencopy`. Bound to container-localhost, never exposed.
+- **[noVNC](https://novnc.com/)** — the browser client, served as static files
+  by `websockify`, which also proxies the WebSocket through to wayvnc.
 - **[Camoufox](https://camoufox.com)** — a stealth Firefox fork driven by
   Playwright, in its own venv at `/opt/camoufox` (browser + GeoIP DB baked in).
   `playwright` is pinned to `1.55.0` (newer releases send a viewport shape this
-  Camoufox build rejects).
+  Camoufox build rejects). It runs as a native Wayland client
+  (`MOZ_ENABLE_WAYLAND=1`).
 
-Helpers on `PATH`: `with-vnc` (entrypoint wrapper — starts KasmVNC + Openbox on
-`:1` when `START_VNC=1`, then execs the given command on that display; a no-op
-otherwise), `camoufox` (CLI), `camoufox-py` (the venv's Python), and
-`camoufox-open URL` (open a URL in a visible Camoufox window to eyeball via the
-view). Camoufox runs non-headless on `DISPLAY=:1`, so you see the exact browser
-the agent drives.
+Helpers on `PATH`: `with-view` (the entrypoint — prepares the Wayland runtime
+environment and execs labwc; labwc's own `/etc/labwc/autostart` then starts
+`wlr-randr`, `wayvnc` and `websockify`), `camoufox` (CLI), `camoufox-py` (the
+venv's Python), and `camoufox-open URL` (open a URL in a visible Camoufox window
+to eyeball via the view). Camoufox renders on the same compositor you are
+watching, so you see the exact browser the agent drives.
 
-Clipboard: KasmVNC serves HTTPS (self-signed) so the browser clipboard API works
-— copy/paste is bidirectional. Seamless clipboard is disabled by default when the
-*viewer* browser is Firefox (upstream quirk); view in a Chromium-based browser or
-toggle it on in the KasmVNC control bar.
+**No TLS and no password.** `run-browser.sh` publishes the port to `127.0.0.1`
+only, so the view is not reachable from the LAN. Tunnel over SSH or Tailscale to
+view it remotely. Clipboard rides `wl-clipboard` through wayvnc.
+
+Under rootless Docker the runners pass `--user 0:0` so bind mounts stay
+writable, but Firefox refuses to start as root when `$HOME` belongs to another
+user. `camoufox-py` therefore switches root to `HOME=/root`, and
+`/root/.cache/camoufox` symlinks to dev's cache so the fetched browser is still
+found.
 
 ### `agentic-hermes`
 
 Adds the [Hermes agent](https://github.com/NousResearch/hermes-agent) (binary
 `hermes`) on top of **`agentic-browser-base`**, so the agent can drive Camoufox
-and you can watch it remotely (`run-hermes.sh -b`). Hermes is a Python app, so
+and you can watch it remotely (see `run-browser.sh`). Hermes is a Python app, so
 it's installed into an isolated venv at `/opt/hermes` (Python 3.11 via `uv`, with
 the `.[all]` extra and `ffmpeg`) and the launcher is symlinked onto the global
 `PATH`. The venv is kept out of `~/.hermes` because that dir is the
-runtime-mounted config. The entrypoint is `with-vnc hermes`. Pin the clone with
+runtime-mounted config. The entrypoint is bare `hermes`. Pin the clone with
 the `HERMES_REF` build arg (default `main`).
 
 ## Build
@@ -139,7 +149,7 @@ Or build by hand:
 # 1. Base image
 docker build -t agentic-dev-base:latest .
 
-# 1b. Browser layer (KasmVNC + Camoufox); hermes is built FROM this
+# 1b. Browser layer (Wayland view + Camoufox); hermes is built FROM this
 docker build -f Dockerfile.browser \
   --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-browser-base:latest .
 
@@ -159,7 +169,6 @@ Build args:
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
 - `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v0.42.0`), base image.
 - `SCCACHE_VERSION` — sccache version for `cargo binstall`, bare semver (default `0.8.2`), base image.
-- `KASMVNC_VERSION` — KasmVNC release to install (default `1.3.4`), `Dockerfile.browser` only.
 - `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
 ## Install (optional)
@@ -249,18 +258,29 @@ Claude-only `--mem-from`/`--mem-to`).
 `run-goose.sh` with no extra args starts an interactive `goose session`;
 `run-hermes.sh` with no args starts the interactive Hermes CLI.
 
-**Browser view (`run-hermes.sh -b [PORT]`).** Boots KasmVNC as the container's own
-background service and runs Hermes in your terminal as usual (they don't share a
-TTY — running the VNC server in the agent's own process would steal its terminal
-and drop you straight back out). Open `https://localhost:8444/` (self-signed;
-accept the warning) and log in as user `kasm`; the password is printed on the
-launch line (`pass=…`), or set `VNC_PASSWORD` (min 6 chars). When the agent (or
-you, via `camoufox-open URL`) opens Camoufox, it renders in that view. Pass a port
-to run several sessions at once, e.g. `run-hermes.sh -b 8500 -n proj2` (the number
-right after `-b` overrides the port; `VNC_PORT` env does the same). `VNC_GEOMETRY`
-defaults to `1280x800`. Without `-n` the view container is ephemeral and removed
-when you exit; with `-n` it persists (pass `-b` on the run that first creates it).
-Use a Chromium-based viewer for seamless clipboard.
+**Browser view (`run-browser.sh`).** The view is a separate concern from the
+agent runners. `run-browser.sh` boots a container whose PID1 is labwc, waits for
+the view to answer, then prints the URL and the exact `docker exec` line to drive
+it:
+
+```bash
+./run-browser.sh                       # view at http://localhost:8444/vnc.html
+./run-browser.sh -p 8500 -n proj2      # a second session on another port
+docker exec -it -w /work hermes-view hermes            # drive it with the agent
+docker exec -it hermes-view camoufox-open https://example.com   # or by hand
+docker rm -f hermes-view               # stop
+```
+
+Flags: `-n NAME` (default `hermes-view`), `-p PORT` (default `8444`), `-w
+WORK_DIR` mounted at `/work` (default `$PWD`), `-g GEOMETRY` (default
+`1280x800`), `-I IMAGE` (default `agentic-hermes:latest`). Whatever the agent —
+or you, via `camoufox-open URL` — opens in Camoufox renders in that view, because
+it is the same compositor.
+
+**Security.** There is no TLS and no password. The port is published to
+`127.0.0.1` only, so the view is not reachable from the LAN; tunnel over SSH or
+Tailscale to view it remotely. Do not change the publish to `0.0.0.0` without
+adding authentication first.
 
 Examples:
 

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Run by labwc once the compositor is up. Ordering is therefore guaranteed
+# without any wait-for-socket polling — that polling is what produced the
+# launch bugs in the previous VNC stack.
+#
+# Failure of wlr-randr is non-fatal: the default headless mode stands and the
+# view still works, just at the wrong size.
+wlr-randr --output HEADLESS-1 --custom-mode "${VIEW_GEOMETRY:-1280x800}" || true
+
+# RFB server, container-localhost only. Never expose this port directly.
+wayvnc 127.0.0.1 5900 &
+
+# Serves the noVNC client and proxies its WebSocket to wayvnc. Binding 0.0.0.0
+# is inside the container; host exposure is decided solely by the -p mapping.
+websockify --web=/usr/share/novnc "0.0.0.0:${VIEW_PORT:-8444}" 127.0.0.1:5900 &
