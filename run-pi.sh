@@ -2,9 +2,13 @@
 # Run the Pi coding agent in a container.
 #
 # Usage:
-#   run-pi.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <pi args>]
+#   run-pi.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
+#             [--del [STORE]] [-- <pi args>]
 #
-#   (default)       Isolated per-project, per-agent config in ~/.docker-agent/<work-dir-name>/pi.
+#   (default)       Isolated per-project, per-agent config in
+#                   ~/.docker-agent/<repo-name>-<root12>/pi, keyed to the repo's
+#                   root commit so renaming or moving the checkout still finds it.
+#                   The work dir must be a git repo with at least one commit.
 #                   Fresh config (no host extensions); auth.json is seeded from
 #                   ~/.pi so pi stays logged in, and the bundled default config
 #                   (pi-default-config/) is seeded if the dir has none.
@@ -13,9 +17,11 @@
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
 #   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
-#   --del           Delete this agent's isolated config (~/.docker-agent/<proj>/pi)
-#                   for the work dir, then exit. Asks you to type the project name to
-#                   confirm. Only valid for the isolated config (not -H/-c).
+#   --del [STORE]   Delete this agent's isolated config, then exit. Asks you to
+#                   type the name back to confirm. Only valid for the isolated
+#                   config (not -H/-c). With no STORE the work dir's repo names
+#                   the store; pass a STORE directory name (see the list printed
+#                   on a miss) to delete one whose checkout is already gone.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `pi`.
@@ -51,6 +57,9 @@ while [ -h "$SOURCE" ]; do
   [ "${SOURCE#/}" = "$SOURCE" ] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# Shared store resolver: repo identity, legacy migration, --del by name.
+. "$SCRIPT_DIR/lib/store.sh"
 
 IMAGE="${IMAGE:-agentic-pi:latest}"
 AGENT_CMD="pi"
@@ -148,11 +157,17 @@ fi
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
 EDIT=0
 DEL=0
-_args=(); _stop=0
+DEL_NAME=""
+_args=(); _stop=0; _want_name=0
 for _a in "$@"; do
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
+  # `--del [STORE]`: a bare word right after --del names the store directly.
+  if [ "$_want_name" -eq 1 ]; then
+    _want_name=0
+    case "$_a" in -*) ;; *) DEL_NAME="$_a"; continue ;; esac
+  fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
-  if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; _want_name=1; continue; fi
   _args+=("$_a")
 done
 set -- ${_args[@]+"${_args[@]}"}
@@ -169,7 +184,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,36p' "$0"; exit 0 ;;
+    h) sed -n '2,48p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -194,8 +209,16 @@ if [ "$DEL" -eq 1 ]; then
     echo "run-pi.sh: --del only removes the isolated config; not valid with -H or -c" >&2
     exit 2
   fi
-  PROJ="$(basename "$WORK_DIR")"
-  DEL_DIR="$HOME/.docker-agent/$PROJ/pi"
+  if [ -n "$DEL_NAME" ]; then
+    # Named form: needs no repo, for a checkout that is already gone.
+    STORE="$(store_by_name "$DEL_NAME" run-pi.sh)" || exit 1
+    PROJ="$DEL_NAME"
+  else
+    _id="$(store_repo_id "$WORK_DIR" run-pi.sh)" || exit 1
+    PROJ="$(store_label "$WORK_DIR")"
+    STORE="$(store_dir_for "$_id" "$PROJ")"
+  fi
+  DEL_DIR="$STORE/pi"
   if [ ! -e "$DEL_DIR" ]; then
     echo "--del: nothing to delete at $DEL_DIR"; exit 0
   fi
@@ -204,14 +227,16 @@ if [ "$DEL" -eq 1 ]; then
   [ "$_ans" = "$PROJ" ] || { echo "aborted"; exit 1; }
   rm -rf "$DEL_DIR"
   [ -e "$DEL_DIR.json" ] && rm -f "$DEL_DIR.json"        # sibling .json (no-op for pi)
-  rmdir "$HOME/.docker-agent/$PROJ" 2>/dev/null || true  # prune parent if now empty
+  store_prune "$STORE"                                   # prune parent if now empty
   echo "deleted $DEL_DIR"
   exit 0
 fi
 
 if [ "$ISOLATE" -eq 1 ]; then
-  # Per-project AND per-agent: ~/.docker-agent/<work-dir-name>/pi
-  CONFIG_SRC="$HOME/.docker-agent/$(basename "$WORK_DIR")/pi"
+  # Per-project AND per-agent, keyed to the repo's root commit rather than the
+  # folder name: ~/.docker-agent/<repo-name>-<root12>/pi
+  _id="$(store_repo_id "$WORK_DIR" run-pi.sh)" || exit 1
+  CONFIG_SRC="$(store_dir_for "$_id" "$(store_label "$WORK_DIR")")/pi"
   # Seed auth so the fresh isolated config is already logged in.
   if [ ! -e "$CONFIG_SRC/agent/auth.json" ] && [ -e "$HOME/.pi/agent/auth.json" ]; then
     mkdir -p "$CONFIG_SRC/agent"

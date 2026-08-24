@@ -5,16 +5,20 @@
 #   run-hermes.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <hermes args>]
 #
 #   (default)       Isolated per-project, per-agent config in
-#                   ~/.docker-agent/<work-dir-name>/hermes. Fresh config; log in
+#                   ~/.docker-agent/<repo-name>-<root12>/hermes, keyed to the repo's
+#                   root commit so renaming or moving the checkout still finds it.
+#                   The work dir must be a git repo with at least one commit. Fresh config; log in
 #                   inside it on first run.
 #   -i              Force the isolated config (this is the default; explicit form).
 #   -H              Use the host config dir (~/.hermes) directly.
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
 #   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
-#   --del           Delete this agent's isolated config (~/.docker-agent/<proj>/hermes)
-#                   for the work dir, then exit. Asks you to type the project name to
-#                   confirm. Only valid for the isolated config (not -H/-c).
+#   --del [STORE]   Delete this agent's isolated config, then exit. Asks you to
+#                   type the name back to confirm. Only valid for the isolated
+#                   config (not -H/-c). With no STORE the work dir's repo names
+#                   the store; pass a STORE directory name (see the list printed
+#                   on a miss) to delete one whose checkout is already gone.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `hermes`.
@@ -35,6 +39,19 @@
 #     --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
 #     -t agentic-hermes:latest .
 set -euo pipefail
+
+# Resolve this script's own dir (following symlinks, since install.sh symlinks
+# it onto PATH) so we can find the shared library next to it.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [ "${SOURCE#/}" = "$SOURCE" ] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# Shared store resolver: repo identity, legacy migration, --del by name.
+. "$SCRIPT_DIR/lib/store.sh"
 
 IMAGE="${IMAGE:-agentic-hermes:latest}"
 AGENT_CMD="hermes"
@@ -92,14 +109,20 @@ fi
 # so agent passthrough args are left alone.
 EDIT=0
 DEL=0
-_args=(); _stop=0
+DEL_NAME=""
+_args=(); _stop=0; _want_name=0
 for _a in "$@"; do
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
+  # `--del [STORE]`: a bare word right after --del names the store directly.
+  if [ "$_want_name" -eq 1 ]; then
+    _want_name=0
+    case "$_a" in -*) ;; *) DEL_NAME="$_a"; continue ;; esac
+  fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
-  if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; _want_name=1; continue; fi
   _args+=("$_a")
 done
-set -- "${_args[@]}"
+set -- ${_args[@]+"${_args[@]}"}
 
 if [ $((DEL + EDIT)) -gt 1 ]; then
   echo "run-hermes.sh: choose only one of --del, --edit" >&2
@@ -138,8 +161,16 @@ if [ "$DEL" -eq 1 ]; then
     echo "run-hermes.sh: --del only removes the isolated config; not valid with -H or -c" >&2
     exit 2
   fi
-  PROJ="$(basename "$WORK_DIR")"
-  DEL_DIR="$HOME/.docker-agent/$PROJ/hermes"
+  if [ -n "$DEL_NAME" ]; then
+    # Named form: needs no repo, for a checkout that is already gone.
+    STORE="$(store_by_name "$DEL_NAME" run-hermes.sh)" || exit 1
+    PROJ="$DEL_NAME"
+  else
+    _id="$(store_repo_id "$WORK_DIR" run-hermes.sh)" || exit 1
+    PROJ="$(store_label "$WORK_DIR")"
+    STORE="$(store_dir_for "$_id" "$PROJ")"
+  fi
+  DEL_DIR="$STORE/hermes"
   if [ ! -e "$DEL_DIR" ]; then
     echo "--del: nothing to delete at $DEL_DIR"; exit 0
   fi
@@ -148,14 +179,16 @@ if [ "$DEL" -eq 1 ]; then
   [ "$_ans" = "$PROJ" ] || { echo "aborted"; exit 1; }
   rm -rf "$DEL_DIR"
   [ -e "$DEL_DIR.json" ] && rm -f "$DEL_DIR.json"        # sibling .json (no-op for hermes)
-  rmdir "$HOME/.docker-agent/$PROJ" 2>/dev/null || true  # prune parent if now empty
+  store_prune "$STORE"                                   # prune parent if now empty
   echo "deleted $DEL_DIR"
   exit 0
 fi
 
 if [ "$ISOLATE" -eq 1 ]; then
-  # Per-project AND per-agent: ~/.docker-agent/<work-dir-name>/hermes
-  CONFIG_SRC="$HOME/.docker-agent/$(basename "$WORK_DIR")/hermes"
+  # Per-project AND per-agent, keyed to the repo's root commit rather than the
+  # folder name: ~/.docker-agent/<repo-name>-<root12>/hermes
+  _id="$(store_repo_id "$WORK_DIR" run-hermes.sh)" || exit 1
+  CONFIG_SRC="$(store_dir_for "$_id" "$(store_label "$WORK_DIR")")/hermes"
 fi
 
 mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"

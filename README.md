@@ -225,12 +225,12 @@ config dir below is used only with `-H`:
 
 | Flag | Meaning | Default |
 |------|---------|---------|
-| _(none)_ | Isolated per-project config in `~/.docker-agent/<work-dir-name>/<agent>`, seeded from the host so it stays logged in | **the default** |
+| _(none)_ | Isolated per-project config in `~/.docker-agent/<repo-name>-<root12>/<agent>`, seeded from the host so it stays logged in. Keyed to the repo's root commit, so renaming or moving the checkout still finds it — the work dir must be a git repo with at least one commit | **the default** |
 | `-i` | Force the isolated config (explicit form of the default) | — |
 | `-H` | Use the host config dir directly (the agent default in the table above) | — |
 | `-c CONFIG_DIR` | Use a custom config dir | — |
 | `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
-| `--del` | Delete this agent's isolated config (`~/.docker-agent/<proj>/<agent>`) for the work dir, then exit — no container. Prompts you to type the project name to confirm. Isolated config only (refuses `-H`/`-c`); prunes the project dir if empty; never touches `~/.docker-agent/gitconfig` | — |
+| `--del [STORE]` | Delete this agent's isolated config, then exit — no container. Prompts you to type the name back to confirm. Isolated config only (refuses `-H`/`-c`); prunes the store dir once empty; never touches `~/.docker-agent/gitconfig`. With no `STORE` the work dir's repo names the store; pass a store directory name to delete one whose checkout is already gone (a miss prints the list) | — |
 | `--mem-from` | Copy the work-dir memory **from** host into the config dir, then exit — no container (Claude only) | — |
 | `--mem-to` | Copy the work-dir memory **to** host from the config dir, then exit — no container (Claude only) | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
@@ -348,7 +348,40 @@ Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook),
 `ccstatusline` (status line), `rust-analyzer` (LSP), plus Node for the
 context-mode hooks/MCP server.
 
+## Tests
+
+Cover the store resolver in `lib/store.sh` — repo identity, rename/move
+survival, legacy migration, the git-repo gate, and `--del`. Each runs against a
+sandboxed `HOME` in a temp dir and never starts a container, so they are safe to
+run anywhere and never touch your real `~/.docker-agent`.
+
+```bash
+./test/store.sh          # resolver behaviour, in depth, via run-pi.sh
+./test/store-agents.sh   # all four runners resolve identically
+```
+
 ## Notes & caveats
+
+- **How a project's store is found.** The isolated store lives at
+  `~/.docker-agent/<repo-name>-<root12>/<agent>`, where `<root12>` is the first 12
+  characters of the repository's root commit. Lookup globs on the `-<root12>`
+  suffix alone and never reads the `<repo-name>` prefix, so renaming or moving a
+  checkout keeps resolving to the same store — the prefix just goes stale, which
+  is cosmetic. A store created under the old folder-name scheme is migrated to the
+  new name the first time it is seen. Three things break the link:
+  - **Shallow clones.** A `--depth` clone has no reachable root commit; the walk
+    returns the graft boundary instead. That is stable for that clone but differs
+    from a full clone of the same repo, so the two get separate stores.
+  - **Rewritten history.** `git filter-repo`, `rebase --root`, squashing all
+    history, or a fresh `git init` all mint a new root commit. The lookup then
+    misses and you get a new, empty store; the old one is still on disk under the
+    old suffix. Recover it with `mv ~/.docker-agent/<old> ~/.docker-agent/<new>`.
+  - **Repos that share a root commit.** Two repos whose first commits are
+    byte-identical — same author, message, tree, and timestamp, which is easy to
+    hit with scripted `git commit --allow-empty -m init` — have the same identity
+    and therefore one store. The runners print a `note: reusing store ...` line
+    when a store is reached under a different label than it was created with, so
+    this shows up rather than silently merging two projects' config.
 
 - **Git identity.** The runners seed your host's *global* `user.name` / `user.email`
   into the container as its global git config (a generated, read-only
@@ -358,7 +391,7 @@ context-mode hooks/MCP server.
   injected.
 - **Credentials exposure.** The default isolated config is *seeded* with a copy
   of your host credentials (e.g. `~/.claude/.credentials.json`) so the agent
-  stays logged in — that copy lives in `~/.docker-agent/<proj>/<agent>` and any
+  stays logged in — that copy lives in `~/.docker-agent/<repo-name>-<root12>/<agent>` and any
   code the agent runs can read it. `-H` exposes the live host credentials
   directly. Use an API key if you want no credential material in the container.
 - **Trust prompt.** The repo mounts at `/work`, which differs from its host

@@ -6,7 +6,9 @@
 #                 [--mem-from | --mem-to] [-- <claude args>]
 #
 #   (default)       Isolated per-project, per-agent config in
-#                   ~/.docker-agent/<work-dir-name>/claude. Fresh config;
+#                   ~/.docker-agent/<repo-name>-<root12>/claude, keyed to the repo's
+#                   root commit so renaming or moving the checkout still finds it.
+#                   The work dir must be a git repo with at least one commit. Fresh config;
 #                   .credentials.json is seeded from ~/.claude so Claude stays
 #                   logged in.
 #   -i              Force the isolated config (this is the default; explicit form).
@@ -14,9 +16,11 @@
 #   -c CONFIG_DIR   Use a custom config dir.
 #                   -i, -H and -c are mutually exclusive.
 #   --edit          Open the resolved config dir in $VISUAL/$EDITOR/nvim/vi and exit (no container).
-#   --del           Delete this agent's isolated config (~/.docker-agent/<proj>/claude)
-#                   for the work dir, then exit. Asks you to type the project name to
-#                   confirm. Only valid for the isolated config (not -H/-c).
+#   --del [STORE]   Delete this agent's isolated config, then exit. Asks you to
+#                   type the name back to confirm. Only valid for the isolated
+#                   config (not -H/-c). With no STORE the work dir's repo names
+#                   the store; pass a STORE directory name (see the list printed
+#                   on a miss) to delete one whose checkout is already gone.
 #   --mem-from      Copy the work-dir memory FROM host into the config dir, then exit.
 #   --mem-to        Copy the work-dir memory TO host from the config dir, then exit.
 #                   --mem-from and --mem-to are mutually exclusive. Memory dir only;
@@ -54,6 +58,9 @@ while [ -h "$SOURCE" ]; do
   [ "${SOURCE#/}" = "$SOURCE" ] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+# Shared store resolver: repo identity, legacy migration, --del by name.
+. "$SCRIPT_DIR/lib/store.sh"
 
 IMAGE="${IMAGE:-agentic-claude:latest}"
 CONFIG_DIR="$HOME/.claude"
@@ -111,20 +118,26 @@ fi
 # handles short opts). Stop at `--` so agent passthrough args keep their own, if any.
 EDIT=0
 DEL=0
-_args=(); _stop=0
+DEL_NAME=""
+_args=(); _stop=0; _want_name=0
 for _a in "$@"; do
   [ "$_stop" -eq 0 ] && [ "$_a" = "--" ] && _stop=1
+  # `--del [STORE]`: a bare word right after --del names the store directly.
+  if [ "$_want_name" -eq 1 ]; then
+    _want_name=0
+    case "$_a" in -*) ;; *) DEL_NAME="$_a"; continue ;; esac
+  fi
   if [ "$_stop" -eq 0 ]; then
     case "$_a" in
       --edit)     EDIT=1; continue ;;
-      --del)      DEL=1; continue ;;
+      --del)      DEL=1; _want_name=1; continue ;;
       --mem-from) MEM_FROM=1; continue ;;
       --mem-to)   MEM_TO=1; continue ;;
     esac
   fi
   _args+=("$_a")
 done
-set -- "${_args[@]}"
+set -- ${_args[@]+"${_args[@]}"}
 
 if [ $((MEM_FROM + MEM_TO)) -gt 1 ]; then
   echo "run-claude.sh: choose only one of --mem-from, --mem-to" >&2
@@ -142,7 +155,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,39p' "$0"; exit 0 ;;
+    h) sed -n '2,49p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -167,8 +180,16 @@ if [ "$DEL" -eq 1 ]; then
     echo "run-claude.sh: --del only removes the isolated config; not valid with -H or -c" >&2
     exit 2
   fi
-  PROJ="$(basename "$WORK_DIR")"
-  DEL_DIR="$HOME/.docker-agent/$PROJ/claude"
+  if [ -n "$DEL_NAME" ]; then
+    # Named form: needs no repo, for a checkout that is already gone.
+    STORE="$(store_by_name "$DEL_NAME" run-claude.sh)" || exit 1
+    PROJ="$DEL_NAME"
+  else
+    _id="$(store_repo_id "$WORK_DIR" run-claude.sh)" || exit 1
+    PROJ="$(store_label "$WORK_DIR")"
+    STORE="$(store_dir_for "$_id" "$PROJ")"
+  fi
+  DEL_DIR="$STORE/claude"
   if [ ! -e "$DEL_DIR" ]; then
     echo "--del: nothing to delete at $DEL_DIR"; exit 0
   fi
@@ -177,14 +198,16 @@ if [ "$DEL" -eq 1 ]; then
   [ "$_ans" = "$PROJ" ] || { echo "aborted"; exit 1; }
   rm -rf "$DEL_DIR"
   [ -e "$DEL_DIR.json" ] && rm -f "$DEL_DIR.json"        # claude's sibling .json
-  rmdir "$HOME/.docker-agent/$PROJ" 2>/dev/null || true  # prune parent if now empty
+  store_prune "$STORE"                                   # prune parent if now empty
   echo "deleted $DEL_DIR"
   exit 0
 fi
 
 if [ "$ISOLATE" -eq 1 ]; then
-  # Per-project AND per-agent: ~/.docker-agent/<work-dir-name>/claude
-  CONFIG_DIR="$HOME/.docker-agent/$(basename "$WORK_DIR")/claude"
+  # Per-project AND per-agent, keyed to the repo's root commit rather than the
+  # folder name: ~/.docker-agent/<repo-name>-<root12>/claude
+  _id="$(store_repo_id "$WORK_DIR" run-claude.sh)" || exit 1
+  CONFIG_DIR="$(store_dir_for "$_id" "$(store_label "$WORK_DIR")")/claude"
   # Seed credentials so the fresh isolated config is already logged in.
   if [ ! -e "$CONFIG_DIR/.credentials.json" ] && [ -e "$HOME/.claude/.credentials.json" ]; then
     mkdir -p "$CONFIG_DIR"
