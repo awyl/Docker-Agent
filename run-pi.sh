@@ -28,7 +28,14 @@
 #   run-pi.sh -n myproj                # create/reuse "myproj"
 #   run-pi.sh -- --version             # pass args to pi
 #
-# Build once:
+# Env:
+#   ENGINE          Container engine: `docker`, or `container` for Apple's CLI
+#                   on macOS. Auto-detected from PATH when unset (docker wins).
+#   AGENT_CPUS      vCPUs for the container VM under ENGINE=container (default 4).
+#   AGENT_MEMORY    RAM for the container VM under ENGINE=container (default 8g).
+#   USER_FLAG       Override the auto-chosen --user flag.
+#
+# Build once (on macOS, `container build` in place of `docker build`):
 #   docker build -t agentic-dev-base:latest .
 #   docker build -f Dockerfile.pi \
 #     --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
@@ -91,16 +98,50 @@ if [ -n "$_gn" ] || [ -n "$_ge" ]; then
   GIT_ENV=(-v "$GIT_ID_FILE":/home/dev/.gitconfig:ro -e GIT_CONFIG_GLOBAL=/home/dev/.gitconfig)
 fi
 
+# Container engine. Apple's `container` CLI (macOS; one lightweight VM per
+# container) is a near drop-in for the docker subcommands used here. Honour
+# $ENGINE when set, otherwise prefer docker if it is on PATH.
+if [ -z "${ENGINE:-}" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    ENGINE=docker
+  elif command -v container >/dev/null 2>&1; then
+    ENGINE=container
+  else
+    echo "run-pi.sh: no container engine found (need docker, or Apple 'container')" >&2
+    exit 1
+  fi
+fi
+
 # Rootless Docker maps the host user to container root, so bind-mounted files
 # appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
 # root in that case (root -> host user, owns the mounts). Rootful Docker keeps
-# the UID-matched `dev` user. Override with USER_FLAG=... if needed.
+# the UID-matched `dev` user. Apple `container` shares host dirs over virtiofs,
+# which exposes every bind-mounted file as root:root whatever the host owner,
+# so it needs the same treatment. Override with USER_FLAG=... if needed.
 if [ -z "${USER_FLAG+x}" ]; then
-  if docker info 2>/dev/null | grep -q 'rootless: true'; then
+  if [ "$ENGINE" = "container" ]; then
+    USER_FLAG="--user 0:0"
+  elif docker info 2>/dev/null | grep -q 'rootless: true'; then
     USER_FLAG="--user 0:0"
   else
     USER_FLAG=""
   fi
+fi
+
+# Per-engine run options and the container-exists/-running probes.
+# `container list` has no --filter, so the lookup greps its id list instead
+# (--name sets the container id, so the name is what we match). Each Apple
+# container is its own VM: the stock cpu/memory allocation sits well below what
+# a Rust build wants, and --init supplies the reaper and signal forwarder that
+# the agent's children (LSPs, npm, plugins) otherwise go without.
+ENGINE_RUN_OPTS=()
+if [ "$ENGINE" = "container" ]; then
+  ENGINE_RUN_OPTS=(--init -c "${AGENT_CPUS:-4}" -m "${AGENT_MEMORY:-8g}")
+  ctr_exists()  { container list -a -q | grep -qx "$1"; }
+  ctr_running() { container list    -q | grep -qx "$1"; }
+else
+  ctr_exists()  { docker ps -aq -f "name=^$1$" | grep -q .; }
+  ctr_running() { docker ps  -q -f "name=^$1$" | grep -q .; }
 fi
 
 # Extract the long flags --edit/--del before getopts (which only handles short opts).
@@ -114,7 +155,7 @@ for _a in "$@"; do
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; continue; fi
   _args+=("$_a")
 done
-set -- "${_args[@]}"
+set -- ${_args[@]+"${_args[@]}"}
 
 if [ $((DEL + EDIT)) -gt 1 ]; then
   echo "run-pi.sh: choose only one of --del, --edit" >&2
@@ -128,7 +169,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,29p' "$0"; exit 0 ;;
+    h) sed -n '2,36p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -206,10 +247,11 @@ fi
 
 # --- Named container: a persistent sandbox we exec the agent into ---
 if [ -n "$NAME" ]; then
-  if docker ps -aq -f "name=^${NAME}$" | grep -q .; then
-    docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
+  if ctr_exists "$NAME"; then
+    ctr_running "$NAME" || "$ENGINE" start "$NAME" >/dev/null
   else
-    docker run -d --name "$NAME" $USER_FLAG \
+    "$ENGINE" run -d --name "$NAME" $USER_FLAG \
+      ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       -e "XDG_DATA_HOME=$XDG_DATA_DST" \
       -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
@@ -221,11 +263,12 @@ if [ -n "$NAME" ]; then
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec "$ENGINE" exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
-exec docker run --rm -it $USER_FLAG \
+exec "$ENGINE" run --rm -it $USER_FLAG \
+  ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   -e "XDG_DATA_HOME=$XDG_DATA_DST" \
   -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
   -v "$CONFIG_SRC":"$CONFIG_DST" \

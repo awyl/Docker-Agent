@@ -25,6 +25,8 @@
 # Env:
 #   UID, GID      override the uid/gid baked in (default: current user)
 #   HERMES_REF    git ref for the hermes build (default: main)
+#   ENGINE        container engine: docker, or `container` for Apple's CLI on
+#                 macOS. Auto-detected from PATH when unset (docker preferred).
 set -euo pipefail
 
 # Resolve symlinks so the build context is the repo, not the install dir
@@ -39,6 +41,20 @@ while [ -L "$self" ]; do
 done
 SRC="$(cd "$(dirname "$self")" && pwd)"
 cd "$SRC"
+
+# Container engine. Apple's `container` CLI (macOS) accepts the same build
+# flags used here: -f, -t, --build-arg, --no-cache. Honour $ENGINE when set,
+# otherwise prefer docker if it is on PATH.
+if [ -z "${ENGINE:-}" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    ENGINE=docker
+  elif command -v container >/dev/null 2>&1; then
+    ENGINE=container
+  else
+    echo "build.sh: no container engine found (need docker, or Apple 'container')" >&2
+    exit 1
+  fi
+fi
 
 UID_ARG="${UID:-$(id -u)}"
 GID_ARG="${GID:-$(id -g)}"
@@ -90,7 +106,7 @@ known() {
   return 1
 }
 if [ "$base_only" -eq 0 ]; then
-  for name in "${selected[@]}"; do
+  for name in ${selected[@]+"${selected[@]}"}; do
     if ! known "$name"; then
       echo "ERROR: unknown agent '$name' (known: claude goose hermes pi)" >&2
       exit 1
@@ -106,12 +122,14 @@ if [ "$base_only" -eq 1 ] && [ "${#docker_flags[@]}" -eq 0 ]; then
 fi
 
 echo "==> Building agentic-dev-base:latest"
-docker build "${docker_flags[@]}" "${base_flags[@]}" -t agentic-dev-base:latest .
+"$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
+  ${base_flags[@]+"${base_flags[@]}"} -t agentic-dev-base:latest .
 
 # Shared browser layer (Wayland view + Camoufox) that hermes is re-based on. Built
 # right after the base so `--base-only` refreshes both base images together.
 echo "==> Building agentic-browser-base:latest  (Dockerfile.browser)"
-docker build "${docker_flags[@]}" "${base_flags[@]}" -f Dockerfile.browser \
+"$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
+  ${base_flags[@]+"${base_flags[@]}"} -f Dockerfile.browser \
   --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
   -t agentic-browser-base:latest .
 
@@ -120,7 +138,7 @@ if [ "$base_only" -eq 1 ]; then
   exit 0
 fi
 
-for name in "${selected[@]}"; do
+for name in ${selected[@]+"${selected[@]}"}; do
   for entry in "${agents[@]}"; do
     [ "${entry%%:*}" = "$name" ] || continue
     rest="${entry#*:}"
@@ -131,9 +149,10 @@ for name in "${selected[@]}"; do
     [ "$name" = "hermes" ] && extra+=(--build-arg "HERMES_REF=$HERMES_REF")
 
     echo "==> Building $image  ($dockerfile)"
-    docker build "${docker_flags[@]}" "${agent_flags[@]}" -f "$dockerfile" \
+    "$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
+      ${agent_flags[@]+"${agent_flags[@]}"} -f "$dockerfile" \
       --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
-      "${extra[@]}" \
+      ${extra[@]+"${extra[@]}"} \
       -t "$image" .
   done
 done
