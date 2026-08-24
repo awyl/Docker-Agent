@@ -16,16 +16,15 @@ ARG UID=1000
 ARG GID=1000
 
 # Pi CLI (npm). --ignore-scripts per the upstream installer recommendation.
-# codegraph + biome (for the AFT plugin) ship alongside; all global bins land on
-# PATH (/usr/local/bin via the base node setup). biome is installed WITHOUT
+# biome (for the AFT plugin) ships alongside; all global bins land on PATH
+# (/usr/local/bin via the base node setup). biome is installed WITHOUT
 # --ignore-scripts so its postinstall can fetch the platform binary.
 RUN set -eux; \
     npm install -g --ignore-scripts @earendil-works/pi-coding-agent; \
-    npm install -g @colbymchenry/codegraph @biomejs/biome; \
+    npm install -g @biomejs/biome; \
     npm cache clean --force; \
     rm -rf /root/.npm /tmp/*; \
     pi --version; \
-    command -v codegraph; \
     command -v biome
 
 # `pi install <plugin>` runs plain `npm install`, and npm 11 added an
