@@ -1,5 +1,11 @@
 {
   "$schema": "https://raw.githubusercontent.com/cortexkit/aft/master/assets/aft.schema.json",
   "search_index": true,
-  "semantic_search": true
+  "semantic_search": true,
+  "lsp": {
+    "disabled": [
+      "rust",
+      "python"
+    ]
+  }
 }

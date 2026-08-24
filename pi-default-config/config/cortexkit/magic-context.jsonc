@@ -12,5 +12,9 @@
   "embedding": {
     "provider": "local",
     "model": "Xenova/all-MiniLM-L6-v2"
+  },
+  "execute_threshold_percentage": {
+    "default": 65,
+    "opencode-go/deepseek-v4-flash": 25
   }
 }

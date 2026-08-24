@@ -1,0 +1,6 @@
+{
+  "provider": "searxng",
+  "baseUrls": {
+    "searxng": "http://host.containers.internal:8888"
+  }
+}

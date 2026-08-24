@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.78.1",
+  "lastChangelogVersion": "0.82.1",
   "packages": [
     "npm:@cortexkit/aft-pi",
     "npm:pi-intercom",
@@ -12,6 +12,11 @@
     "npm:@cortexkit/pi-magic-context",
     "npm:@aliou/pi-guardrails",
     "npm:pi-mcp-extension",
-    "npm:pi-minimax-m3-caching-fix"
-  ]
+    "npm:pi-minimax-m3-caching-fix",
+    "npm:@juicesharp/rpiv-web-tools"
+  ],
+  "theme": "dark",
+  "defaultProvider": "opencode-go",
+  "defaultModel": "deepseek-v4-flash",
+  "defaultThinkingLevel": "high"
 }
