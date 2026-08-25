@@ -16,8 +16,20 @@
 # and is not reachable from the LAN. Tunnel over SSH or Tailscale to view it
 # remotely.
 #
-# Stop with: docker rm -f NAME
+# Stop with the command printed on startup (docker rm -f NAME, or
+# container delete --force NAME under Apple container).
 set -euo pipefail
+
+# Resolve this script's own dir (following symlinks) so we can find the shared
+# library next to it.
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [ "${SOURCE#/}" = "$SOURCE" ] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+. "$SCRIPT_DIR/lib/engine.sh"
 
 NAME="hermes-view"
 PORT="${VIEW_PORT:-8444}"
@@ -39,23 +51,17 @@ done
 
 WORK_DIR="$(cd "$WORK_DIR" && pwd)"
 
-# Rootless Docker maps the host user to container root, so bind-mounted files
-# appear owned by uid 0 and the non-root `dev` user cannot write them. Same
-# rule the agent runners use.
-if [ -z "${USER_FLAG+x}" ]; then
-  if docker info 2>/dev/null | grep -q 'rootless: true'; then
-    USER_FLAG="--user 0:0"
-  else
-    USER_FLAG=""
-  fi
-fi
+engine_select run-browser.sh || exit 1
+engine_user_flag
+engine_run_opts
 
-if docker ps -aq -f "name=^${NAME}$" | grep -q .; then
-  docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
+if ctr_exists "$NAME"; then
+  ctr_running "$NAME" || "$ENGINE" start "$NAME" >/dev/null
 else
-  # A failed `docker run` (missing image, no with-view in it) would otherwise
-  # abort under `set -e` with only the runtime's own message.
-  if ! docker run -d --name "$NAME" $USER_FLAG \
+  # A failed `run` (missing image, no with-view in it) would otherwise abort
+  # under `set -e` with only the runtime's own message.
+  if ! "$ENGINE" run -d --name "$NAME" $USER_FLAG \
+      ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       -e "VIEW_PORT=8444" -e "VIEW_GEOMETRY=$GEOMETRY" \
       -p "127.0.0.1:${PORT}:8444" \
       -v "$WORK_DIR":/work \
@@ -78,14 +84,14 @@ done
 
 if [ "${ok:-0}" -ne 1 ]; then
   echo "run-browser.sh: view did not come up on 127.0.0.1:${PORT}" >&2
-  echo "  check: docker logs $NAME" >&2
+  echo "  check: $ENGINE logs $NAME" >&2
   exit 1
 fi
 
 cat <<EOF
 Browser view up (container '$NAME', ${GEOMETRY}).
   Watch:  http://localhost:${PORT}/vnc.html?autoconnect=true&resize=remote
-  Drive:  docker exec -it $USER_FLAG -w /work $NAME hermes
-  Browse: docker exec -it $USER_FLAG $NAME camoufox-open https://example.com
-  Stop:   docker rm -f $NAME
+  Drive:  $ENGINE exec -it $USER_FLAG -w /work $NAME hermes
+  Browse: $ENGINE exec -it $USER_FLAG $NAME camoufox-open https://example.com
+  Stop:   $(engine_rm) $NAME
 EOF

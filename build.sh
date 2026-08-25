@@ -42,19 +42,10 @@ done
 SRC="$(cd "$(dirname "$self")" && pwd)"
 cd "$SRC"
 
-# Container engine. Apple's `container` CLI (macOS) accepts the same build
-# flags used here: -f, -t, --build-arg, --no-cache. Honour $ENGINE when set,
-# otherwise prefer docker if it is on PATH.
-if [ -z "${ENGINE:-}" ]; then
-  if command -v docker >/dev/null 2>&1; then
-    ENGINE=docker
-  elif command -v container >/dev/null 2>&1; then
-    ENGINE=container
-  else
-    echo "build.sh: no container engine found (need docker, or Apple 'container')" >&2
-    exit 1
-  fi
-fi
+# Apple `container` accepts the same build flags used here: -f, -t,
+# --build-arg, --no-cache.
+. "$SRC/lib/engine.sh"
+engine_select build.sh || exit 1
 
 UID_ARG="${UID:-$(id -u)}"
 GID_ARG="${GID:-$(id -g)}"

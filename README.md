@@ -348,6 +348,39 @@ Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook),
 `ccstatusline` (status line), `rust-analyzer` (LSP), plus Node for the
 context-mode hooks/MCP server.
 
+## Running on macOS
+
+Every runner and `build.sh` work with [Apple `container`](https://github.com/apple/container)
+as well as docker. The engine is picked from `$ENGINE`, falling back to docker
+when it is on PATH and to `container` otherwise:
+
+```bash
+container system start                 # once per boot
+ENGINE=container ./build.sh pi
+cd ~/code/myproj && ENGINE=container /path/to/run-pi.sh
+```
+
+Set `ENGINE` in your shell (`set -Ux ENGINE container` in fish) to stop typing it.
+
+Three things differ under `container`, all handled in `lib/engine.sh`:
+
+- **Containers run as root.** Host directories are shared over virtiofs, which
+  exposes every bind mount as `root:root` regardless of the host owner, so the
+  UID-matched `dev` user could not write `/work`. Root maps back to your host
+  user on write. This is the same path rootless Docker already took.
+- **Each container is its own VM.** The stock cpu/memory allocation sits below
+  what a Rust build wants, so runs get `-c 4 -m 8g` — override with
+  `AGENT_CPUS` / `AGENT_MEMORY`. `--init` is passed too, to supply the reaper
+  and signal forwarder the agent's child processes (LSPs, npm, plugins)
+  otherwise go without.
+- **`container list` has no `--filter`**, so named containers are looked up by
+  grepping its id list.
+
+Two macOS notes: use **macOS 26** (on 15, vmnet isolates containers from each
+other and `--network` errors out), and install **bash 5** (`brew install bash`)
+— the stock 3.2 is from 2007 and these scripts are only guarded against its
+empty-array behaviour, not tested on it.
+
 ## Tests
 
 Cover the store resolver in `lib/store.sh` — repo identity, rename/move
@@ -358,7 +391,11 @@ run anywhere and never touch your real `~/.docker-agent`.
 ```bash
 ./test/store.sh          # resolver behaviour, in depth, via run-pi.sh
 ./test/store-agents.sh   # all four runners resolve identically
+./test/engine.sh         # every runner builds the same command for both engines
 ```
+
+`test/engine.sh` stubs both engines with a script that echoes its argv, so it
+never builds or runs anything either.
 
 ## Notes & caveats
 

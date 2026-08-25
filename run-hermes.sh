@@ -33,7 +33,7 @@
 #
 #   For the browser view, see run-browser.sh.
 #
-# Build once:
+# Build once (on macOS, `container build` in place of `docker build`):
 #   docker build -t agentic-dev-base:latest .
 #   docker build -f Dockerfile.hermes \
 #     --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
@@ -52,6 +52,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 # Shared store resolver: repo identity, legacy migration, --del by name.
 . "$SCRIPT_DIR/lib/store.sh"
+. "$SCRIPT_DIR/lib/engine.sh"
 
 IMAGE="${IMAGE:-agentic-hermes:latest}"
 AGENT_CMD="hermes"
@@ -93,17 +94,9 @@ if [ -n "$_gn" ] || [ -n "$_ge" ]; then
   GIT_ENV=(-v "$GIT_ID_FILE":/home/dev/.gitconfig:ro -e GIT_CONFIG_GLOBAL=/home/dev/.gitconfig)
 fi
 
-# Rootless Docker maps the host user to container root, so bind-mounted files
-# appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
-# root in that case (root -> host user, owns the mounts). Rootful Docker keeps
-# the UID-matched `dev` user. Override with USER_FLAG=... if needed.
-if [ -z "${USER_FLAG+x}" ]; then
-  if docker info 2>/dev/null | grep -q 'rootless: true'; then
-    USER_FLAG="--user 0:0"
-  else
-    USER_FLAG=""
-  fi
-fi
+engine_select run-hermes.sh || exit 1
+engine_user_flag
+engine_run_opts
 
 # Extract --edit/--del before getopts (which handles no long flags). Stop at `--`
 # so agent passthrough args are left alone.
@@ -211,19 +204,21 @@ MOUNTS=(
 
 # --- Named container: a persistent sandbox we exec the agent into ---
 if [ -n "$NAME" ]; then
-  if docker ps -aq -f "name=^${NAME}$" | grep -q .; then
-    docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
+  if ctr_exists "$NAME"; then
+    ctr_running "$NAME" || "$ENGINE" start "$NAME" >/dev/null
   else
-    docker run -d --name "$NAME" $USER_FLAG \
+    "$ENGINE" run -d --name "$NAME" $USER_FLAG \
+      ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec "$ENGINE" exec -it $USER_FLAG -w /work "$NAME" "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
-exec docker run --rm -it $USER_FLAG \
+exec "$ENGINE" run --rm -it $USER_FLAG \
+  ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
   -w /work \
   "$IMAGE" "$@"

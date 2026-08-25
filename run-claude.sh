@@ -42,7 +42,7 @@
 #   run-claude.sh --mem-to                         # save container memory back to host
 #   run-claude.sh -- --version                     # pass args to claude
 #
-# Build once:
+# Build once (on macOS, `container build` in place of `docker build`):
 #   docker build -t agentic-dev-base:latest .
 #   docker build -f Dockerfile.claude \
 #     --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" \
@@ -61,6 +61,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 # Shared store resolver: repo identity, legacy migration, --del by name.
 . "$SCRIPT_DIR/lib/store.sh"
+. "$SCRIPT_DIR/lib/engine.sh"
 
 IMAGE="${IMAGE:-agentic-claude:latest}"
 CONFIG_DIR="$HOME/.claude"
@@ -102,17 +103,9 @@ if [ -n "$_gn" ] || [ -n "$_ge" ]; then
   GIT_ENV=(-v "$GIT_ID_FILE":/home/dev/.gitconfig:ro -e GIT_CONFIG_GLOBAL=/home/dev/.gitconfig)
 fi
 
-# Rootless Docker maps the host user to container root, so bind-mounted files
-# appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
-# root in that case (root -> host user, owns the mounts). Rootful Docker keeps
-# the UID-matched `dev` user. Override with USER_FLAG=... if needed.
-if [ -z "${USER_FLAG+x}" ]; then
-  if docker info 2>/dev/null | grep -q 'rootless: true'; then
-    USER_FLAG="--user 0:0"
-  else
-    USER_FLAG=""
-  fi
-fi
+engine_select run-claude.sh || exit 1
+engine_user_flag
+engine_run_opts
 
 # Extract long flags (--edit, --del, --mem-from, --mem-to) before getopts (which only
 # handles short opts). Stop at `--` so agent passthrough args keep their own, if any.
@@ -298,15 +291,16 @@ fi
 
 # --- Named container: a persistent sandbox we exec claude into ---
 # The container itself idles (sleep infinity); each invocation runs claude via
-# `docker exec`, so the container survives claude exiting. Mounts are fixed when
+# `exec`, so the container survives claude exiting. Mounts are fixed when
 # the container is first created -> -c/-i/-w only matter on that first call.
 if [ -n "$NAME" ]; then
-  if docker ps -aq -f "name=^${NAME}$" | grep -q .; then
+  if ctr_exists "$NAME"; then
     # Exists already: just make sure it is running, then re-enter it.
-    docker ps -q -f "name=^${NAME}$" | grep -q . || docker start "$NAME" >/dev/null
+    ctr_running "$NAME" || "$ENGINE" start "$NAME" >/dev/null
   else
     # First time: create the idle container with the resolved mounts.
-    docker run -d --name "$NAME" $USER_FLAG \
+    "$ENGINE" run -d --name "$NAME" $USER_FLAG \
+      ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       -v "$CONFIG_DIR":/home/dev/.claude \
       -v "$CONFIG_JSON":/home/dev/.claude.json \
       -v "$WORK_DIR":/work \
@@ -318,11 +312,12 @@ if [ -n "$NAME" ]; then
       --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec docker exec -it $USER_FLAG -w /work "$NAME" claude "$@"
+  exec "$ENGINE" exec -it $USER_FLAG -w /work "$NAME" claude "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
-exec docker run --rm -it $USER_FLAG \
+exec "$ENGINE" run --rm -it $USER_FLAG \
+  ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   -v "$CONFIG_DIR":/home/dev/.claude \
   -v "$CONFIG_JSON":/home/dev/.claude.json \
   -v "$WORK_DIR":/work \

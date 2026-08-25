@@ -60,6 +60,7 @@ SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 # Shared store resolver: repo identity, legacy migration, --del by name.
 . "$SCRIPT_DIR/lib/store.sh"
+. "$SCRIPT_DIR/lib/engine.sh"
 
 IMAGE="${IMAGE:-agentic-pi:latest}"
 AGENT_CMD="pi"
@@ -107,51 +108,9 @@ if [ -n "$_gn" ] || [ -n "$_ge" ]; then
   GIT_ENV=(-v "$GIT_ID_FILE":/home/dev/.gitconfig:ro -e GIT_CONFIG_GLOBAL=/home/dev/.gitconfig)
 fi
 
-# Container engine. Apple's `container` CLI (macOS; one lightweight VM per
-# container) is a near drop-in for the docker subcommands used here. Honour
-# $ENGINE when set, otherwise prefer docker if it is on PATH.
-if [ -z "${ENGINE:-}" ]; then
-  if command -v docker >/dev/null 2>&1; then
-    ENGINE=docker
-  elif command -v container >/dev/null 2>&1; then
-    ENGINE=container
-  else
-    echo "run-pi.sh: no container engine found (need docker, or Apple 'container')" >&2
-    exit 1
-  fi
-fi
-
-# Rootless Docker maps the host user to container root, so bind-mounted files
-# appear owned by uid 0 and the non-root `dev` user cannot write them. Run as
-# root in that case (root -> host user, owns the mounts). Rootful Docker keeps
-# the UID-matched `dev` user. Apple `container` shares host dirs over virtiofs,
-# which exposes every bind-mounted file as root:root whatever the host owner,
-# so it needs the same treatment. Override with USER_FLAG=... if needed.
-if [ -z "${USER_FLAG+x}" ]; then
-  if [ "$ENGINE" = "container" ]; then
-    USER_FLAG="--user 0:0"
-  elif docker info 2>/dev/null | grep -q 'rootless: true'; then
-    USER_FLAG="--user 0:0"
-  else
-    USER_FLAG=""
-  fi
-fi
-
-# Per-engine run options and the container-exists/-running probes.
-# `container list` has no --filter, so the lookup greps its id list instead
-# (--name sets the container id, so the name is what we match). Each Apple
-# container is its own VM: the stock cpu/memory allocation sits well below what
-# a Rust build wants, and --init supplies the reaper and signal forwarder that
-# the agent's children (LSPs, npm, plugins) otherwise go without.
-ENGINE_RUN_OPTS=()
-if [ "$ENGINE" = "container" ]; then
-  ENGINE_RUN_OPTS=(--init -c "${AGENT_CPUS:-4}" -m "${AGENT_MEMORY:-8g}")
-  ctr_exists()  { container list -a -q | grep -qx "$1"; }
-  ctr_running() { container list    -q | grep -qx "$1"; }
-else
-  ctr_exists()  { docker ps -aq -f "name=^$1$" | grep -q .; }
-  ctr_running() { docker ps  -q -f "name=^$1$" | grep -q .; }
-fi
+engine_select run-pi.sh || exit 1
+engine_user_flag
+engine_run_opts
 
 # Extract the long flags --edit/--del before getopts (which only handles short opts).
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
