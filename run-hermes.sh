@@ -58,6 +58,12 @@ IMAGE="${IMAGE:-agentic-hermes:latest}"
 AGENT_CMD="hermes"
 CONFIG_SRC="$HOME/.hermes"
 CONFIG_DST="/home/dev/.hermes"
+# Plugins that store state in $XDG_DATA_HOME (default ~/.local/share) or read
+# config from $XDG_CONFIG_HOME (default ~/.config) — both ephemeral here — are
+# redirected under the mounted config dir so they persist. Matches the ENV baked
+# into the image; set explicitly so it holds even on an older image.
+XDG_DATA_DST="$CONFIG_DST/share"
+XDG_CONFIG_DST="$CONFIG_DST/config"
 WORK_DIR="$PWD"
 NAME=""
 ISOLATE=0
@@ -210,15 +216,19 @@ if [ -n "$NAME" ]; then
     "$ENGINE" run -d --name "$NAME" $USER_FLAG \
       ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
+      -e "XDG_DATA_HOME=$XDG_DATA_DST" \
+      -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec "$ENGINE" exec -it $USER_FLAG -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec "$ENGINE" exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
 exec "$ENGINE" run --rm -it $USER_FLAG \
   ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   "${MOUNTS[@]}" ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
+  -e "XDG_DATA_HOME=$XDG_DATA_DST" \
+  -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
   -w /work \
   "$IMAGE" "$@"

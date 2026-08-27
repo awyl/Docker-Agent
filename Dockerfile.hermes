@@ -5,7 +5,7 @@
 #
 # Codebase + Hermes config are bind-mounted at RUN time (not baked in):
 #   - host repo      -> /work
-#   - host ~/.hermes -> /home/dev/.hermes
+#   - host ~/.hermes -> /home/dev/.hermes  (also XDG data/config, see below)
 #
 # UID/GID are build args so files written into the mounted config/repo
 # stay owned by your host user.
@@ -55,6 +55,15 @@ RUN set -eux; \
 
 USER dev
 ENV HOME=/home/dev
+
+# Redirect XDG data + config under the bind-mounted Hermes config dir so plugins
+# that store state in $XDG_DATA_HOME (default ~/.local/share) or read config from
+# $XDG_CONFIG_HOME (default ~/.config) — both ephemeral here, only ~/.hermes is
+# mounted — persist across containers. XDG_CACHE_HOME and XDG_RUNTIME_DIR are
+# left alone: the browser base layer sets those for Camoufox and the compositor.
+ENV XDG_DATA_HOME=/home/dev/.hermes/share
+ENV XDG_CONFIG_HOME=/home/dev/.hermes/config
+
 WORKDIR /work
 
 # Bare `hermes` starts the interactive CLI; extra args from `docker run` are
