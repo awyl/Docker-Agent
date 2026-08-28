@@ -1,10 +1,20 @@
 {
   "$schema": "https://raw.githubusercontent.com/cortexkit/magic-context/master/assets/magic-context.schema.json",
   "historian": {
-    "model": "opencode-go/deepseek-v4-flash"
+    "opencode": {
+      "model": "opencode-go/deepseek-v4-flash"
+    },
+    "pi": {
+      "model": "opencode-go/deepseek-v4-flash"
+    }
   },
   "dreamer": {
-    "model": "opencode-go/deepseek-v4-flash"
+    "opencode": {
+      "model": "opencode-go/deepseek-v4-flash"
+    },
+    "pi": {
+      "model": "opencode-go/deepseek-v4-flash"
+    }
   },
   "sidekick": {
     "model": "opencode-go/deepseek-v4-flash"
@@ -15,6 +25,7 @@
   },
   "execute_threshold_percentage": {
     "default": 65,
+    "opencode-go/mimo-v2.5": 25,
     "opencode-go/deepseek-v4-flash": 25
   }
 }
