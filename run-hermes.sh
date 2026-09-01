@@ -196,7 +196,7 @@ mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"
 if [ "$EDIT" -eq 1 ]; then
   ED="${VISUAL:-${EDITOR:-}}"
   [ -z "$ED" ] && { command -v nvim >/dev/null 2>&1 && ED=nvim || ED=vi; }
-  exec $ED "$CONFIG_SRC"
+  cd "$CONFIG_SRC" && exec $ED .
 fi
 
 # Volume mounts shared by every launch path.

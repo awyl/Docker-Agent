@@ -226,7 +226,7 @@ fi
 if [ "$EDIT" -eq 1 ]; then
   ED="${VISUAL:-${EDITOR:-}}"
   [ -z "$ED" ] && { command -v nvim >/dev/null 2>&1 && ED=nvim || ED=vi; }
-  exec $ED "$CONFIG_SRC"
+  cd "$CONFIG_SRC" && exec $ED .
 fi
 
 # --- Named container: a persistent sandbox we exec the agent into ---

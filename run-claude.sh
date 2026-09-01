@@ -258,7 +258,7 @@ fi
 if [ "$EDIT" -eq 1 ]; then
   ED="${VISUAL:-${EDITOR:-}}"
   [ -z "$ED" ] && { command -v nvim >/dev/null 2>&1 && ED=nvim || ED=vi; }
-  exec $ED "$CONFIG_DIR"
+  cd "$CONFIG_DIR" && exec $ED .
 fi
 
 # --mem-from / --mem-to: one-shot copy of the work-dir memory dir between the host
