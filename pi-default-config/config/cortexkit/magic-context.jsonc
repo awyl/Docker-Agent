@@ -2,30 +2,32 @@
   "$schema": "https://raw.githubusercontent.com/cortexkit/magic-context/master/assets/magic-context.schema.json",
   "historian": {
     "opencode": {
-      "model": "opencode-go/deepseek-v4-flash"
+      "model": "aiproxy/opencode-go/mimo-v2.5"
     },
     "pi": {
-      "model": "opencode-go/deepseek-v4-flash"
+      "model": "aiproxy/opencode-go/mimo-v2.5"
     }
   },
   "dreamer": {
     "opencode": {
-      "model": "opencode-go/deepseek-v4-flash"
+      "model": "aiproxy/opencode-go/mimo-v2.5"
     },
     "pi": {
-      "model": "opencode-go/deepseek-v4-flash"
+      "model": "aiproxy/opencode-go/mimo-v2.5"
     }
   },
   "sidekick": {
-    "model": "opencode-go/deepseek-v4-flash"
+    "model": "aiproxy/opencode-go/mimo-v2.5"
   },
   "embedding": {
-    "provider": "local",
-    "model": "Xenova/all-MiniLM-L6-v2"
+    "provider": "openai-compatible",
+    "model": "embeddings-local/all-MiniLM-L6-v2",
+    "endpoint": "http://host.containers.internal:9999/v1",
+    "api_key": "AIPROXY_TOKEN"
   },
   "execute_threshold_percentage": {
     "default": 65,
-    "opencode-go/mimo-v2.5": 25,
-    "opencode-go/deepseek-v4-flash": 25
+    "aiproxy/opencode-go/mimo-v2.5": 25,
+    "aiproxy/opencode-go/deepseek-v4-flash": 25
   }
 }

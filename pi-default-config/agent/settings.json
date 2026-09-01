@@ -12,11 +12,10 @@
     "npm:@cortexkit/pi-magic-context",
     "npm:@aliou/pi-guardrails",
     "npm:pi-mcp-extension",
-    "npm:pi-minimax-m3-caching-fix",
-    "npm:@juicesharp/rpiv-web-tools"
+    "npm:pi-minimax-m3-caching-fix"
   ],
   "theme": "dark",
-  "defaultProvider": "opencode-go",
-  "defaultModel": "deepseek-v4-flash",
+  "defaultProvider": "aiproxy",
+  "defaultModel": "opencode-go/mimo-v2.5",
   "defaultThinkingLevel": "high"
 }

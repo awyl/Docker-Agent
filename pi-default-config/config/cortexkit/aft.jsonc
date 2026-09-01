@@ -2,6 +2,12 @@
   "$schema": "https://raw.githubusercontent.com/cortexkit/aft/master/assets/aft.schema.json",
   "search_index": true,
   "semantic_search": true,
+  "semantic": {
+    "backend": "openai_compatible",
+    "model": "embeddings-local/all-MiniLM-L6-v2",
+    "base_url": "http://host.containers.internal:9999/v1",
+    "api_key_env": "AIPROXY_TOKEN"
+  },
   "lsp": {
     "disabled": [
       "rust",

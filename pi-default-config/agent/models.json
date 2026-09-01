@@ -1,0 +1,8 @@
+{
+  "providers": {
+    "aiproxy": {
+      "baseUrl": "http://host.containers.internal:9999/v1",
+      "apiKey": "AIPROXY_TOKEN"
+    }
+  }
+}
