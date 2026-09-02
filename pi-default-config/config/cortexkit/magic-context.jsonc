@@ -23,7 +23,7 @@
     "provider": "openai-compatible",
     "model": "embeddings-local/all-MiniLM-L6-v2",
     "endpoint": "http://host.containers.internal:9999/v1",
-    "api_key": "AIPROXY_TOKEN"
+    "api_key": "{env:AIPROXY_TOKEN}"
   },
   "execute_threshold_percentage": {
     "default": 65,
