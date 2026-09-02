@@ -28,6 +28,8 @@
   "execute_threshold_percentage": {
     "default": 65,
     "aiproxy/opencode-go/mimo-v2.5": 25,
+    "aiproxy/zai/glm-5.3-flash": 25,
+    "aiproxy/minimax/MiniMax-M3": 25,
     "aiproxy/opencode-go/deepseek-v4-flash": 25
   }
 }

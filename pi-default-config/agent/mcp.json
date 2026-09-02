@@ -1,13 +1,3 @@
 {
-  "mcpServers": {
-    "searxng": {
-      "transport": "streamable-http",
-      "url": "http://host.containers.internal:9999/mcp/searxng",
-      "headers": {
-        "Authorization": "AIPROXY_TOKEN",
-        "X-MCP-Servers": "searxng,ctx7,grep"
-      },
-      "lifecycle": "eager"
-    }
-  }
+  "mcpServers": {}
 }

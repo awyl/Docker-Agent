@@ -1,18 +1,18 @@
 {
   "lastChangelogVersion": "0.82.1",
   "packages": [
+    "git:github.com/awyl/aiproxy",
     "npm:@cortexkit/aft-pi",
     "npm:pi-intercom",
     "npm:@juicesharp/rpiv-ask-user-question",
     "npm:pi-caveman",
     "npm:@juicesharp/rpiv-todo",
-    "npm:pi-subagents",
     "git:github.com/obra/superpowers",
     "npm:pi-slopchop",
     "npm:@cortexkit/pi-magic-context",
     "npm:@aliou/pi-guardrails",
     "npm:pi-mcp-extension",
-    "npm:pi-minimax-m3-caching-fix"
+    "git:github.com/awyl/rust-wiki"
   ],
   "theme": "dark",
   "defaultProvider": "aiproxy",
