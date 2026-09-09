@@ -12,7 +12,9 @@
     "npm:@cortexkit/pi-magic-context",
     "npm:@aliou/pi-guardrails",
     "npm:pi-mcp-extension",
-    "git:github.com/awyl/rust-wiki"
+    "git:github.com/awyl/rust-wiki",
+    "git:github.com/DietrichGebert/ponytail",
+    "git:github.com/ayghri/i-have-adhd"
   ],
   "theme": "dark",
   "defaultProvider": "aiproxy",
