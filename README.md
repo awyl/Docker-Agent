@@ -430,7 +430,12 @@ never builds or runs anything either.
 - **Credentials exposure.** The default isolated config is *seeded* with a copy
   of your host credentials (e.g. `~/.claude/.credentials.json`) so the agent
   stays logged in — that copy lives in `~/.docker-agent/<repo-name>-<root12>/<agent>` and any
-  code the agent runs can read it. `-H` exposes the live host credentials
+  code the agent runs can read it. The default Claude settings deny `Read`/`Edit`
+  on `~/.claude/.credentials.json` and any Bash command that names
+  `.credentials.json`. The Bash rule is what catches `cat`: the `rtk` hook
+  rewrites `cat FILE` to `rtk read FILE`, which the `Read` rule alone no longer
+  recognises. Neither stops code that reaches the file without naming it (a
+  glob, a script file). `-H` exposes the live host credentials
   directly. Use an API key if you want no credential material in the container.
 - **Trust prompt.** The repo mounts at `/work`, which differs from its host
   path. Claude trusts directories by absolute path, so the first run shows a
