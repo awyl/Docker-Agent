@@ -12,7 +12,8 @@
       "Read(~/.claude/.credentials.json)",
       "Edit(~/.claude/.credentials.json)",
       "Bash(*.credentials.json*)"
-    ]
+    ],
+    "blockReadsOutsideWorkingDirectories": false
   },
   "statusLine": {
     "type": "command",
