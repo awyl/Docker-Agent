@@ -1,5 +1,6 @@
 {
   "model": "opus",
+  "tui": "fullscreen",
   "env": {
     "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
   },
