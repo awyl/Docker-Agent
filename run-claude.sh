@@ -3,7 +3,7 @@
 #
 # Usage:
 #   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
-#                 [--mem-from | --mem-to] [-- <claude args>]
+#                 [--reseed] [--mem-from | --mem-to] [-- <claude args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<repo-name>-<root12>/claude, keyed to the repo's
@@ -21,6 +21,12 @@
 #                   config (not -H/-c). With no STORE the work dir's repo names
 #                   the store; pass a STORE directory name (see the list printed
 #                   on a miss) to delete one whose checkout is already gone.
+#   --reseed        Reset this config's settings to the bundled defaults, then
+#                   exit. Overwrites the claude-default-config/claude files
+#                   (settings.json, ...) and the default claude.json keys
+#                   (mcpServers); credentials, memory, sessions, history and
+#                   plugin caches stay. Old files are kept as settings.json.bak
+#                   and claude.json.bak in the config dir. Not valid with -H.
 #   --mem-from      Copy the work-dir memory FROM host into the config dir, then exit.
 #   --mem-to        Copy the work-dir memory TO host from the config dir, then exit.
 #                   --mem-from and --mem-to are mutually exclusive. Memory dir only;
@@ -38,6 +44,7 @@
 #   run-claude.sh -w ~/code/myproj                 # isolated config, different repo
 #   run-claude.sh -c ~/.claude-sandbox -w /tmp/x   # custom config + repo
 #   run-claude.sh -n myproj                        # create/reuse "myproj"
+#   run-claude.sh --reseed                         # reset settings to defaults
 #   run-claude.sh --mem-from                       # seed container memory from host
 #   run-claude.sh --mem-to                         # save container memory back to host
 #   run-claude.sh -- --version                     # pass args to claude
@@ -107,10 +114,11 @@ engine_select run-claude.sh || exit 1
 engine_user_flag
 engine_run_opts
 
-# Extract long flags (--edit, --del, --mem-from, --mem-to) before getopts (which only
-# handles short opts). Stop at `--` so agent passthrough args keep their own, if any.
+# Extract long flags (--edit, --del, --reseed, --mem-from, --mem-to) before getopts
+# (which only handles short opts). Stop at `--` so agent passthrough args keep their own.
 EDIT=0
 DEL=0
+RESEED=0
 DEL_NAME=""
 _args=(); _stop=0; _want_name=0
 for _a in "$@"; do
@@ -124,6 +132,7 @@ for _a in "$@"; do
     case "$_a" in
       --edit)     EDIT=1; continue ;;
       --del)      DEL=1; _want_name=1; continue ;;
+      --reseed)   RESEED=1; continue ;;
       --mem-from) MEM_FROM=1; continue ;;
       --mem-to)   MEM_TO=1; continue ;;
     esac
@@ -136,8 +145,8 @@ if [ $((MEM_FROM + MEM_TO)) -gt 1 ]; then
   echo "run-claude.sh: choose only one of --mem-from, --mem-to" >&2
   exit 2
 fi
-if [ $((DEL + EDIT + MEM_FROM + MEM_TO)) -gt 1 ]; then
-  echo "run-claude.sh: choose only one of --del, --edit, --mem-from, --mem-to" >&2
+if [ $((DEL + EDIT + RESEED + MEM_FROM + MEM_TO)) -gt 1 ]; then
+  echo "run-claude.sh: choose only one of --del, --edit, --reseed, --mem-from, --mem-to" >&2
   exit 2
 fi
 
@@ -148,7 +157,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,49p' "$0"; exit 0 ;;
+    h) sed -n '2,56p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -161,6 +170,10 @@ if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
 fi
 if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
   ISOLATE=1
+fi
+if [ "$RESEED" -eq 1 ] && [ "$HOST" -eq 1 ]; then
+  echo "run-claude.sh: --reseed would overwrite the host ~/.claude settings; not valid with -H" >&2
+  exit 2
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
@@ -252,6 +265,34 @@ fi
 DEFAULT_CONFIG="$SCRIPT_DIR/claude-default-config"
 if [ ! -e "$CONFIG_DIR/settings.json" ] && [ -d "$DEFAULT_CONFIG/claude" ]; then
   cp -rn "$DEFAULT_CONFIG/claude/." "$CONFIG_DIR/"
+fi
+
+# --reseed: overwrite the bundled files and the default claude.json keys with the
+# repo defaults, then exit. Everything else in the config dir (credentials,
+# memory, sessions, history, plugin caches) and claude.json (login, per-project
+# state) is left alone. -H is refused above so the host ~/.claude is never reset.
+if [ "$RESEED" -eq 1 ]; then
+  command -v python3 >/dev/null 2>&1 || { echo "run-claude.sh: --reseed needs python3" >&2; exit 1; }
+  cp "$CONFIG_DIR/settings.json" "$CONFIG_DIR/settings.json.bak"
+  cp "$CONFIG_JSON" "$CONFIG_DIR/claude.json.bak"
+  cp -r "$DEFAULT_CONFIG/claude/." "$CONFIG_DIR/"
+  CONFIG_DIR="$CONFIG_DIR" CONFIG_JSON="$CONFIG_JSON" DEFAULT_JSON="$DEFAULT_JSON" \
+  python3 -c 'import json, os
+d = os.environ["CONFIG_DIR"]
+# An installed plugin missing from enabledPlugins can fall back to enabled
+# (its defaultEnabled), so pin every installed plugin the defaults skip to false.
+s = json.load(open(d + "/settings.json"))
+ip = d + "/plugins/installed_plugins.json"
+if os.path.exists(ip):
+    for p in json.load(open(ip)).get("plugins", {}):
+        s.setdefault("enabledPlugins", {}).setdefault(p, False)
+json.dump(s, open(d + "/settings.json", "w"), indent=2)
+cj = json.load(open(os.environ["CONFIG_JSON"]))
+if os.path.exists(os.environ["DEFAULT_JSON"]):
+    cj.update(json.load(open(os.environ["DEFAULT_JSON"])))
+json.dump(cj, open(os.environ["CONFIG_JSON"], "w"), indent=2)'
+  echo "reseeded $CONFIG_DIR from defaults (old: settings.json.bak, claude.json.bak)"
+  exit 0
 fi
 
 # --edit: open the resolved (now-seeded) host config dir in an editor, then exit.
