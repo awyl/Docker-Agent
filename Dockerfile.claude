@@ -17,8 +17,13 @@ ARG UID=1000
 ARG GID=1000
 
 # Claude Code CLI + ccstatusline (host settings.json references it as statusLine).
+# npm 12 skips dependency install scripts unless allowlisted, which leaves
+# claude-code's bin/claude.exe as a stub; run its postinstall (which copies the
+# platform-native binary into place) explicitly, then prove the CLI starts.
 RUN set -eux; \
     npm install -g @anthropic-ai/claude-code ccstatusline; \
+    node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs"; \
+    claude --version; \
     npm cache clean --force; \
     rm -rf /root/.npm /tmp/*
 
