@@ -335,18 +335,17 @@ enables (in `settings.json`):
 
 - **superpowers** — skills + SessionStart hook.
 - **caveman** — output-compression mode hooks.
-- **context-mode** — MCP server + tool-routing hooks.
 - **code-simplifier** — code cleanup skill.
-- **rust-analyzer-lsp** — drives the `rust-analyzer` binary baked into the base.
+- **i-have-adhd** — ADHD-shaped output; always-on via the seeded
+  `.i-have-adhd-always` flag (delete it from the config dir to opt out).
+- **ponytail** — minimal-code mode hooks.
 
-`caveman` and `context-mode` come from GitHub marketplaces declared in the
-seeded `settings.json`; the rest come from the built-in `claude-plugins-official`
-marketplace. context-mode re-deploys its own SessionStart cache-heal hook on
-first run, so the bundle omits it.
+`caveman`, `i-have-adhd` and `ponytail` come from GitHub marketplaces declared
+in the seeded `settings.json`; the rest come from the built-in
+`claude-plugins-official` marketplace.
 
-Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook),
-`ccstatusline` (status line), `rust-analyzer` (LSP), plus Node for the
-context-mode hooks/MCP server.
+Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook) and
+`ccstatusline` (status line).
 
 ## Running on macOS
 

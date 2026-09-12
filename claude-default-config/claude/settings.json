@@ -36,18 +36,24 @@
         "repo": "JuliusBrussee/caveman"
       }
     },
-    "context-mode": {
+    "i-have-adhd": {
       "source": {
         "source": "github",
-        "repo": "mksglu/context-mode"
+        "repo": "ayghri/i-have-adhd"
+      }
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
       }
     }
   },
   "enabledPlugins": {
     "caveman@caveman": true,
-    "context-mode@context-mode": true,
     "superpowers@claude-plugins-official": true,
     "code-simplifier@claude-plugins-official": true,
-    "rust-analyzer-lsp@claude-plugins-official": true
+    "i-have-adhd@i-have-adhd": true,
+    "ponytail@ponytail": true
   }
 }
