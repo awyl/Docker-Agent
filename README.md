@@ -56,7 +56,9 @@ image inherit it.
 The repo ships a default Claude config in `claude-default-config/` (model,
 security deny rules, auto-mode reads outside `/work` left unblocked via
 `blockReadsOutsideWorkingDirectories: false`, statusline, the `rtk` Bash hook,
-plugin set + marketplaces).
+plugin set + marketplaces, and a `searxng` MCP server in `claude.json` that
+reaches the host's SearXNG on `:8888` and Byparr on `:8191` via
+`host.docker.internal`).
 `run-claude.sh` seeds it into any config dir that has no config yet — i.e. lacks
 `settings.json` — covering `-i` isolated, the default, and custom `-c` dirs.
 Existing config is never overwritten (it copies no-clobber, so a seeded

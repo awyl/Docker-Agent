@@ -1,3 +1,16 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "searxng": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-searxng"
+      ],
+      "env": {
+        "SEARXNG_URL": "http://host.docker.internal:8888",
+        "BYPARR_URL": "http://host.docker.internal:8191"
+      }
+    }
+  }
 }
