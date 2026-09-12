@@ -78,8 +78,8 @@ RUN set -eux; \
 # TARGETARCH is set by buildx; falls back to amd64 under a plain `docker build`.
 # sccache version for cargo-binstall. Bare semver (no leading "v"): binstall's
 # version spec is `sccache@X.Y.Z`. Override with --build-arg SCCACHE_VERSION=X.Y.Z.
-ARG SCCACHE_VERSION=0.8.2
-ARG RTK_TAG=v0.42.0
+ARG SCCACHE_VERSION=0.17.0
+ARG RTK_TAG=v0.49.0
 ARG TARGETARCH
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
