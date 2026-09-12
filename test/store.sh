@@ -2,8 +2,8 @@
 # Tests for the store resolver in lib/store.sh, driven through run-pi.sh.
 #
 # Every case runs against a sandboxed HOME in a temp dir, so it never touches
-# your real ~/.docker-agent. No container is ever started: `--edit` with
-# VISUAL=echo makes the runner print the store path it resolved and exit.
+# your real ~/.docker-agent. No container is ever started: `--edit` cds into the
+# store it resolved and opens ".", so VISUAL='sh -c pwd' prints that path and exits.
 #
 #   ./test/store.sh
 set -uo pipefail
@@ -19,7 +19,7 @@ ck() { # ck <label> <expected-substring> <actual>
 }
 mkrepo() { mkdir -p "$1"; git -C "$1" init -q
            git -C "$1" commit -q --allow-empty -m "init $(basename "$1")"; }
-run() { env HOME="$T/home" VISUAL=echo bash "$REPO/run-pi.sh" "$@" 2>&1; }
+run() { env HOME="$T/home" VISUAL='sh -c pwd' bash "$REPO/run-pi.sh" "$@" 2>&1; }
 
 mkdir -p "$T/home"
 

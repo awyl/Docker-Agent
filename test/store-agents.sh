@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks that all four runners resolve their store identically -- if they ever
 # disagree, one project ends up with two stores. Sandboxed HOME in a temp dir;
-# no container is started (`--edit` with VISUAL=echo prints the resolved path).
+# no container is started (`--edit` cds into the resolved store and opens ".",
+# so VISUAL='sh -c pwd' prints the resolved path).
 #
 #   ./test/store-agents.sh
 set -uo pipefail
@@ -18,7 +19,7 @@ mkdir -p "$T/home"
 for spec in "run-pi.sh:pi" "run-claude.sh:claude" "run-goose.sh:goose" "run-hermes.sh:hermes"; do
   prog="${spec%%:*}"; agent="${spec##*:}"
   echo "== $prog =="
-  run(){ env HOME="$T/home" VISUAL=echo bash "$REPO/$prog" "$@" 2>&1; }
+  run(){ env HOME="$T/home" VISUAL='sh -c pwd' bash "$REPO/$prog" "$@" 2>&1; }
 
   P="$T/$agent-proj"; mkdir -p "$P"; git -C "$P" init -q
   git -C "$P" commit -q --allow-empty -m "init $agent-proj"
