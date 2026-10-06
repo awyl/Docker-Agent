@@ -1,7 +1,5 @@
 {
   "$schema": "https://raw.githubusercontent.com/cortexkit/aft/master/assets/aft.schema.json",
-  "search_index": true,
-  "semantic_search": true,
   "semantic": {
     "backend": "openai_compatible",
     "model": "embeddings-local/all-MiniLM-L6-v2",

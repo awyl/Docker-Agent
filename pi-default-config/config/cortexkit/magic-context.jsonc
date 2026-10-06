@@ -16,9 +16,6 @@
       "model": "aiproxy/opencode-go/mimo-v2.5"
     }
   },
-  "sidekick": {
-    "model": "aiproxy/opencode-go/mimo-v2.5"
-  },
   "embedding": {
     "provider": "openai-compatible",
     "model": "embeddings-local/all-MiniLM-L6-v2",
@@ -30,6 +27,7 @@
     "aiproxy/opencode-go/mimo-v2.5": 25,
     "aiproxy/zai/glm-5.3-flash": 25,
     "aiproxy/minimax/MiniMax-M3": 25,
-    "aiproxy/opencode-go/deepseek-v4-flash": 25
+    "aiproxy/opencode-go/deepseek-v4-flash": 25,
+    "aiproxy/opencode-go/deepseek-v4.1-flash": 25
   }
 }
