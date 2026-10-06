@@ -1,15 +1,11 @@
 {
   "mcpServers": {
-    "searxng": {
-      "type": "stdio",
-      "command": "npx",
-      "args": [
-        "-y",
-        "mcp-searxng"
-      ],
-      "env": {
-        "SEARXNG_URL": "http://host.docker.internal:8888",
-        "BYPARR_URL": "http://host.docker.internal:8191"
+    "aiproxy": {
+      "type": "http",
+      "url": "http://host.docker.internal:9999/mcp",
+      "headers": {
+        "Authorization": "Bearer AIPROXY_TOKEN",
+        "X-MCP-Servers": "searxng,ctx7,brain"
       }
     }
   }
