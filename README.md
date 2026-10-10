@@ -345,6 +345,9 @@ enables (in `settings.json`):
 - **i-have-adhd** — ADHD-shaped output; always-on via the seeded
   `.i-have-adhd-always` flag (delete it from the config dir to opt out).
 - **ponytail** — minimal-code mode hooks.
+- **idle-compact** — local mod in `mods/idle-compact/`, loaded via
+  `env.CLAUDE_CODE_PLUGIN_DIRS`: compacts after 55 idle minutes, before the 1h
+  prompt cache expires (edit `IDLE_MS` in `hooks/register.ts` for API-key 5m caches).
 
 `caveman`, `i-have-adhd` and `ponytail` come from GitHub marketplaces declared
 in the seeded `settings.json`; the rest come from the built-in

@@ -2,7 +2,8 @@
   "model": "opus",
   "tui": "fullscreen",
   "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku"
+    "CLAUDE_CODE_SUBAGENT_MODEL": "haiku",
+    "CLAUDE_CODE_PLUGIN_DIRS": "~/.claude/mods/idle-compact"
   },
   "permissions": {
     "deny": [

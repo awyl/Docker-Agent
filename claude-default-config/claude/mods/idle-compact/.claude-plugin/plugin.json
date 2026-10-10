@@ -1,0 +1,1 @@
+{ "name": "idle-compact", "version": "0.1.0", "description": "Compact the conversation after 55 idle minutes, before the 1h prompt cache expires" }
