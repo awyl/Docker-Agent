@@ -14,6 +14,9 @@
     "git:github.com/ayghri/i-have-adhd"
   ],
   "theme": "dark",
+  "defaultTools": [
+    "+codemode"
+  ],
   "codemode": {
     "mode": "only"
   },
