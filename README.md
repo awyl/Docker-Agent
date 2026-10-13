@@ -76,7 +76,8 @@ seeds it into any config dir that has no config yet — i.e. lacks
 `agent/settings.json` — covering `-i` isolated, the default `~/.pi`, and custom
 `-c` dirs. Existing config is never overwritten (it copies no-clobber, so a
 seeded `auth.json` survives). Auth, installed npm packages, cloned plugin git
-repos, sessions, and runtime DBs are intentionally excluded from the bundle.
+repos, sessions, and runtime DBs are intentionally excluded from the bundle. To
+push updated defaults into a config that already exists, run `run-pi.sh --reseed`.
 
 ### `agentic-goose`
 
@@ -236,7 +237,7 @@ config dir below is used only with `-H`:
 | `-c CONFIG_DIR` | Use a custom config dir | — |
 | `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
 | `--del [STORE]` | Delete this agent's isolated config, then exit — no container. Prompts you to type the name back to confirm. Isolated config only (refuses `-H`/`-c`); prunes the store dir once empty; never touches `~/.docker-agent/gitconfig`. With no `STORE` the work dir's repo names the store; pass a store directory name to delete one whose checkout is already gone (a miss prints the list) | — |
-| `--reseed` | Reset the config's settings to `claude-default-config/`, then exit — no container (Claude only). Overwrites the bundled files (`settings.json`, …) and the default `claude.json` keys (`mcpServers`), and pins plugins the defaults no longer enable to off. Credentials, memory, sessions, history and plugin caches stay; the old files are kept as `settings.json.bak` / `claude.json.bak` in the config dir. Refuses `-H` | — |
+| `--reseed` | Reset the config's settings to the bundled defaults, then exit — no container (Claude and Pi). Claude: resets from `claude-default-config/`. Overwrites the bundled files (`settings.json`, …) and the default `claude.json` keys (`mcpServers`), and pins plugins the defaults no longer enable to off. Credentials, memory, sessions, history and plugin caches stay; the old files are kept as `settings.json.bak` / `claude.json.bak` in the config dir. Pi: overwrites every file in `pi-default-config/`, keeping each replaced one as `<file>.bak`; auth, packages and sessions stay. Refuses `-H` | — |
 | `--mem-from` | Copy the work-dir memory **from** host into the config dir, then exit — no container (Claude only) | — |
 | `--mem-to` | Copy the work-dir memory **to** host from the config dir, then exit — no container (Claude only) | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
@@ -260,7 +261,7 @@ logs); point-in-time copy, last writer wins. The two are mutually exclusive and
 respect `-i`/`-H`/`-c` and `-w`.
 
 `run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags (except the
-Claude-only `--reseed` and `--mem-from`/`--mem-to`).
+Claude-only `--mem-from`/`--mem-to`; `--reseed` is Claude and Pi only).
 `run-goose.sh` with no extra args starts an interactive `goose session`;
 `run-hermes.sh` with no args starts the interactive Hermes CLI.
 

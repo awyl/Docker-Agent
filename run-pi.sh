@@ -3,7 +3,7 @@
 #
 # Usage:
 #   run-pi.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
-#             [--del [STORE]] [-- <pi args>]
+#             [--del [STORE]] [--reseed] [-- <pi args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<repo-name>-<root12>/pi, keyed to the repo's
@@ -22,6 +22,9 @@
 #                   config (not -H/-c). With no STORE the work dir's repo names
 #                   the store; pass a STORE directory name (see the list printed
 #                   on a miss) to delete one whose checkout is already gone.
+#   --reseed        Reset this config's bundled files to pi-default-config/,
+#                   then exit (no container). Each overwritten file is kept as
+#                   <file>.bak; auth, packages and sessions stay. Not valid with -H.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `pi`.
@@ -32,6 +35,7 @@
 #   run-pi.sh -w ~/code/myproj         # isolated config for myproj
 #   run-pi.sh -c ~/.pi-sandbox         # custom config dir
 #   run-pi.sh -n myproj                # create/reuse "myproj"
+#   run-pi.sh --reseed                 # reset settings to defaults
 #   run-pi.sh -- --version             # pass args to pi
 #
 # Env:
@@ -112,10 +116,11 @@ engine_select run-pi.sh || exit 1
 engine_user_flag
 engine_run_opts
 
-# Extract the long flags --edit/--del before getopts (which only handles short opts).
+# Extract the long flags --edit/--del/--reseed before getopts (which only handles short opts).
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
 EDIT=0
 DEL=0
+RESEED=0
 DEL_NAME=""
 _args=(); _stop=0; _want_name=0
 for _a in "$@"; do
@@ -127,12 +132,13 @@ for _a in "$@"; do
   fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; _want_name=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--reseed" ]; then RESEED=1; continue; fi
   _args+=("$_a")
 done
 set -- ${_args[@]+"${_args[@]}"}
 
-if [ $((DEL + EDIT)) -gt 1 ]; then
-  echo "run-pi.sh: choose only one of --del, --edit" >&2
+if [ $((DEL + EDIT + RESEED)) -gt 1 ]; then
+  echo "run-pi.sh: choose only one of --del, --edit, --reseed" >&2
   exit 2
 fi
 
@@ -143,7 +149,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,48p' "$0"; exit 0 ;;
+    h) sed -n '2,52p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -156,6 +162,10 @@ if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
 fi
 if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
   ISOLATE=1
+fi
+if [ "$RESEED" -eq 1 ] && [ "$HOST" -eq 1 ]; then
+  echo "run-pi.sh: --reseed would overwrite the host ~/.pi settings; not valid with -H" >&2
+  exit 2
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
@@ -220,6 +230,19 @@ fi
 if [ -d "$DEFAULT_CONFIG/config" ]; then
   mkdir -p "$CONFIG_SRC/config"
   cp -rn "$DEFAULT_CONFIG/config/." "$CONFIG_SRC/config/"
+fi
+
+# --reseed: overwrite every bundled file with the repo default, then exit. Each
+# file about to be replaced is kept as <file>.bak first; anything not in the
+# bundle (auth.json, packages, sessions) is left alone. -H is refused above.
+if [ "$RESEED" -eq 1 ]; then
+  (cd "$DEFAULT_CONFIG" && find agent config -type f) | while IFS= read -r _f; do
+    if [ -e "$CONFIG_SRC/$_f" ]; then cp "$CONFIG_SRC/$_f" "$CONFIG_SRC/$_f.bak"; fi
+  done
+  cp -r "$DEFAULT_CONFIG/agent/." "$CONFIG_SRC/agent/"
+  cp -r "$DEFAULT_CONFIG/config/." "$CONFIG_SRC/config/"
+  echo "reseeded $CONFIG_SRC from defaults (old files kept as *.bak)"
+  exit 0
 fi
 
 # --edit: open the resolved (now-seeded) host config dir in an editor, then exit.

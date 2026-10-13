@@ -14,9 +14,9 @@
     "git:github.com/ayghri/i-have-adhd"
   ],
   "theme": "dark",
-  "defaultTools": [
-    "+codemode"
-  ],
+  "codemode": {
+    "mode": "only"
+  },
   "defaultProvider": "aiproxy",
   "defaultModel": "opencode-go/deepseek-v4.1-flash",
   "defaultThinkingLevel": "high"
