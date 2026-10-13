@@ -118,11 +118,14 @@ echo "==> Building agentic-dev-base:latest"
 
 # Shared browser layer (Wayland view + Camoufox) that hermes is re-based on. Built
 # right after the base so `--base-only` refreshes both base images together.
-echo "==> Building agentic-browser-base:latest  (Dockerfile.browser)"
-"$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
-  ${base_flags[@]+"${base_flags[@]}"} -f Dockerfile.browser \
-  --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
-  -t agentic-browser-base:latest .
+# Skipped when hermes (its only consumer) isn't being built.
+if [ "$base_only" -eq 1 ] || [[ " ${selected[*]-} " == *" hermes "* ]]; then
+  echo "==> Building agentic-browser-base:latest  (Dockerfile.browser)"
+  "$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
+    ${base_flags[@]+"${base_flags[@]}"} -f Dockerfile.browser \
+    --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
+    -t agentic-browser-base:latest .
+fi
 
 if [ "$base_only" -eq 1 ]; then
   echo "==> Done (base only)."
