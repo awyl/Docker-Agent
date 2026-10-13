@@ -2,7 +2,7 @@
 #
 # Agentic dev base image.
 # Languages: Rust (stable + clippy/rustfmt), Node.js LTS, Bun, Python3 + uv.
-# Tooling: git, ripgrep, fd, jq, fzf, bat, curl/wget, unzip, neovim, build chain.
+# Tooling: git, ripgrep, fd, jq, fzf, bat, curl/wget, unzip, neovim, build chain, mold.
 # Goal: everything current, disk footprint kept low (single layers, caches purged).
 
 FROM debian:trixie-slim
@@ -33,7 +33,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         ca-certificates curl wget gnupg \
         git openssh-client \
-        build-essential pkg-config libssl-dev \
+        build-essential pkg-config libssl-dev mold \
         python3 python3-venv python3-dev \
         ripgrep fd-find jq fzf bat unzip xz-utils \
         neovim less locales; \
@@ -57,6 +57,11 @@ RUN set -eux; \
     ln -sf "$(rustup which rust-analyzer)" /usr/local/bin/rust-analyzer; \
     # wasm browser/web target (wasm-bindgen, trunk, leptos/yew, ...).
     rustup target add wasm32-unknown-unknown; \
+    # Link native targets with mold (gcc >= 12 understands -fuse-ld=mold).
+    # Lives in $CARGO_HOME/config.toml, the lowest-precedence cargo config, so
+    # project rustflags merge with it; scoped per-triple so wasm32 is untouched.
+    printf '[target.%s]\nrustflags = ["-C", "link-arg=-fuse-ld=mold"]\n' \
+        x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu > "$CARGO_HOME/config.toml"; \
     chmod -R a+rwX "$CARGO_HOME" "$RUSTUP_HOME"; \
     \
     # ---- shrink: drop caches, docs, apt lists ----
@@ -116,7 +121,7 @@ ENV RUSTC_WRAPPER=sccache \
 
 # Sanity: fail the build if any tool is missing.
 RUN set -eux; \
-    rustc --version; cargo --version; clippy-driver --version; rust-analyzer --version; sccache --version; \
+    rustc --version; cargo --version; clippy-driver --version; rust-analyzer --version; sccache --version; mold --version; \
     rustup target list --installed | grep -qx wasm32-unknown-unknown; \
     node --version; npm --version; bun --version; \
     python3 --version; uv --version; rtk --version; \
