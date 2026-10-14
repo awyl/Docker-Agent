@@ -214,6 +214,10 @@ if [ "$ISOLATE" -eq 1 ]; then
 fi
 
 mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"
+# Global skills (`npx skills add -g`) land in ~/.agents/skills, outside the
+# mounted ~/.pi. Keep them under the config dir as <config>/agents so they
+# persist and stay per-config, like share/ and config/.
+mkdir -p "$CONFIG_SRC/agents"
 
 # Seed the bundled default config into a config dir that has none yet
 # (no agent/settings.json). cp -rn never clobbers, so an auth.json seeded
@@ -264,6 +268,7 @@ if [ -n "$NAME" ]; then
       -e "XDG_DATA_HOME=$XDG_DATA_DST" \
       -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
+      -v "$CONFIG_SRC/agents":/home/dev/.agents \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
       -v "$CARGO_HOST/git":/home/dev/.cargo/git \
@@ -281,6 +286,7 @@ exec "$ENGINE" run --rm -it $USER_FLAG \
   -e "XDG_DATA_HOME=$XDG_DATA_DST" \
   -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
+  -v "$CONFIG_SRC/agents":/home/dev/.agents \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
   -v "$CARGO_HOST/git":/home/dev/.cargo/git \

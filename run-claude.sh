@@ -222,6 +222,10 @@ if [ "$ISOLATE" -eq 1 ]; then
 fi
 
 mkdir -p "$CONFIG_DIR"; CONFIG_DIR="$(cd "$CONFIG_DIR" && pwd)"
+# Global skills (`npx skills add -g`) keep their canonical copy in
+# ~/.agents/skills, outside the mounted ~/.claude. Keep it under the config dir
+# so it persists, as .agents/ since agents/ is Claude's subagent dir.
+mkdir -p "$CONFIG_DIR/.agents"
 # Claude keeps a sibling ~/.claude.json file alongside the config dir. It must
 # exist as a file before the bind mount, or Docker creates a *directory* there.
 # Claude parses it as JSON, so an empty file (plain `touch`) trips a startup
@@ -343,6 +347,7 @@ if [ -n "$NAME" ]; then
     "$ENGINE" run -d --name "$NAME" $USER_FLAG \
       ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       -v "$CONFIG_DIR":/home/dev/.claude \
+      -v "$CONFIG_DIR/.agents":/home/dev/.agents \
       -v "$CONFIG_JSON":/home/dev/.claude.json \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
@@ -360,6 +365,7 @@ fi
 exec "$ENGINE" run --rm -it $USER_FLAG \
   ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   -v "$CONFIG_DIR":/home/dev/.claude \
+  -v "$CONFIG_DIR/.agents":/home/dev/.agents \
   -v "$CONFIG_JSON":/home/dev/.claude.json \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
