@@ -264,7 +264,7 @@ fi
 # already has a settings.json so it's left untouched.
 DEFAULT_CONFIG="$SCRIPT_DIR/claude-default-config"
 if [ ! -e "$CONFIG_DIR/settings.json" ] && [ -d "$DEFAULT_CONFIG/claude" ]; then
-  cp -rn "$DEFAULT_CONFIG/claude/." "$CONFIG_DIR/"
+  cp -rn "$DEFAULT_CONFIG/claude/." "$CONFIG_DIR/" || true
 fi
 
 # --reseed: overwrite the bundled files and the default claude.json keys with the
