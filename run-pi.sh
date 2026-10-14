@@ -116,6 +116,16 @@ engine_select run-pi.sh || exit 1
 engine_user_flag
 engine_run_opts
 
+# Under Apple `container`, pi exits at once when it is the container's direct
+# process, but runs fine as a child of bash. The cause is unknown (it appeared
+# once a config dir already held plugin state). Keep bash as the parent: the
+# trailing `exit` stops bash from exec'ing pi in its place.
+PI_ENTRY=(); PI_CMD=("$AGENT_CMD")
+if [ "$ENGINE" = "container" ]; then
+  PI_ENTRY=(--entrypoint bash)
+  PI_CMD=(bash -c 'pi "$@"; exit $?' pi)
+fi
+
 # Extract the long flags --edit/--del/--reseed before getopts (which only handles short opts).
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
 EDIT=0
@@ -270,7 +280,7 @@ if [ -n "$NAME" ]; then
       -w /work --entrypoint sleep \
       "$IMAGE" infinity >/dev/null
   fi
-  exec "$ENGINE" exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" -w /work "$NAME" "$AGENT_CMD" "$@"
+  exec "$ENGINE" exec -it $USER_FLAG -e "XDG_DATA_HOME=$XDG_DATA_DST" -e "XDG_CONFIG_HOME=$XDG_CONFIG_DST" -w /work "$NAME" "${PI_CMD[@]}" "$@"
 fi
 
 # --- Unnamed: throwaway container, removed on exit ---
@@ -285,4 +295,5 @@ exec "$ENGINE" run --rm -it $USER_FLAG \
   -v "$CARGO_HOST/registry":/home/dev/.cargo/registry \
   ${GIT_ENV[@]+"${GIT_ENV[@]}"} \
   -w /work \
-  "$IMAGE" "$@"
+  ${PI_ENTRY[@]+"${PI_ENTRY[@]}"} \
+  "$IMAGE" ${PI_ENTRY[@]+"${PI_CMD[@]:1}"} "$@"
