@@ -4,6 +4,7 @@
     "git:github.com/awyl/aiproxy",
     "npm:@cortexkit/aft-pi",
     "npm:pi-intercom",
+    "npm:pi-subagents",
     "npm:@juicesharp/rpiv-ask-user-question",
     "npm:pi-caveman",
     "npm:@juicesharp/rpiv-todo",
