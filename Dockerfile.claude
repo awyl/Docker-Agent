@@ -37,6 +37,9 @@ RUN set -eux; \
 
 USER dev
 ENV HOME=/home/dev
+# The image pins the CLI version; rebuild to update. In-container auto-update
+# can't work (root-owned npm prefix, npm 12 skips the native-binary postinstall).
+ENV DISABLE_AUTOUPDATER=1
 
 # Bake the host's ccstatusline appearance config into the image. It lives
 # outside ~/.claude, so the runtime config-dir mount doesn't cover it; baking it
