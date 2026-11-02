@@ -29,13 +29,15 @@ for spec in "run-pi.sh:pi" "run-claude.sh:claude" "run-goose.sh:goose" "run-herm
   mv "$P" "$T/$agent-renamed"
   ck "survives rename"            ".docker-agent/$agent-proj-$ID/$agent" "$(run --edit -w "$T/$agent-renamed")"
 
+  # pi/claude auto `git init` unless told not to; goose/hermes always fail.
+  ng=(); case "$agent" in pi|claude) ng=(--no-git-init) ;; esac
   mkdir -p "$T/$agent-plain"
-  out=$(run --edit -w "$T/$agent-plain"); rc=$?
+  out=$(run --edit ${ng[@]+"${ng[@]}"} -w "$T/$agent-plain"); rc=$?
   ck "non-git exits 1" "1" "$rc"
   ck "non-git reason"  "is not a git repository" "$out"
 
   mkdir -p "$T/$agent-empty"; git -C "$T/$agent-empty" init -q
-  out=$(run --edit -w "$T/$agent-empty"); rc=$?
+  out=$(run --edit ${ng[@]+"${ng[@]}"} -w "$T/$agent-empty"); rc=$?
   ck "no-commit exits 1" "1" "$rc"
   ck "no-commit reason"  "has no commits yet" "$out"
 

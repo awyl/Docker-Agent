@@ -51,19 +51,35 @@ ck "adopted path" "/.docker-agent/legacyproj-$LID/pi" "$(run --edit -w "$T/legac
 ck "contents kept" "marker" "$(cat "$T/home/.docker-agent/legacyproj-$LID/pi/KEEP" 2>&1)"
 ck "old dir gone" "NO" "$([ -e "$T/home/.docker-agent/legacyproj" ] && echo YES || echo NO)"
 
-echo "6. non-git dir fails with instructions"
+echo "6. --no-git-init: non-git dir fails with instructions"
 mkdir -p "$T/plain"
-out=$(run --edit -w "$T/plain"); rc=$?
+out=$(run --edit --no-git-init -w "$T/plain"); rc=$?
 ck "exit 1" "1" "$rc"
 ck "reason" "is not a git repository" "$out"
 ck "instruction" "init && git -C" "$out"
+ck "left alone" "NO" "$([ -e "$T/plain/.git" ] && echo YES || echo NO)"
 
-echo "7. repo with no commits fails with its own instruction"
+echo "7. --no-git-init: repo with no commits fails with its own instruction"
 mkdir -p "$T/empty"; git -C "$T/empty" init -q
-out=$(run --edit -w "$T/empty"); rc=$?
+out=$(run --edit --no-git-init -w "$T/empty"); rc=$?
 ck "exit 1" "1" "$rc"
 ck "reason" "has no commits yet" "$out"
 ck "instruction" "commit --allow-empty" "$out"
+
+echo "7b. default: non-git dir and commitless repo are auto-initialised"
+out=$(run --edit -w "$T/plain"); rc=$?
+ck "exit 0" "0" "$rc"
+ck "says init" "initialised git repo" "$out"
+PID=$(git -C "$T/plain" rev-list --max-parents=0 HEAD | tail -1)
+ck "store" "/.docker-agent/plain-${PID:0:12}/pi" "$out"
+out=$(run --edit -w "$T/empty"); rc=$?
+ck "exit 0" "0" "$rc"
+ck "says commit" "empty root commit" "$out"
+out=$(env HOME="$T/plain" VISUAL='sh -c pwd' bash "$REPO/run-pi.sh" --edit -w "$T/plain" 2>&1)
+ck "existing repo untouched" "NO" "$([[ "$out" == *initialised* ]] && echo YES || echo NO)"
+mkdir -p "$T/home2"
+out=$(cd "$T/home2" && env HOME="$T/home2" VISUAL='sh -c pwd' bash "$REPO/run-pi.sh" --edit 2>&1); rc=$?
+ck "refuses \$HOME" "refusing to git init your home dir" "$out"
 
 echo "8. --del STORE works with the repo deleted"
 rm -rf "$T/legacyproj"

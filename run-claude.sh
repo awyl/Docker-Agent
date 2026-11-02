@@ -3,12 +3,13 @@
 #
 # Usage:
 #   run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
-#                 [--reseed] [--mem-from | --mem-to] [-- <claude args>]
+#                 [--reseed] [--no-git-init] [--mem-from | --mem-to] [-- <claude args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<repo-name>-<root12>/claude, keyed to the repo's
 #                   root commit so renaming or moving the checkout still finds it.
-#                   The work dir must be a git repo with at least one commit. Fresh config;
+#                   A work dir that is not a git repo (or has no commits) gets
+#                   `git init` + an empty root commit automatically. Fresh config;
 #                   .credentials.json is seeded from ~/.claude so Claude stays
 #                   logged in.
 #   -i              Force the isolated config (this is the default; explicit form).
@@ -31,6 +32,7 @@
 #   --mem-to        Copy the work-dir memory TO host from the config dir, then exit.
 #                   --mem-from and --mem-to are mutually exclusive. Memory dir only;
 #                   point-in-time copy (last writer wins). Honour -i/-H/-c and -w.
+#   --no-git-init   Don't auto `git init`/commit the work dir; fail instead.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container. First call creates it;
 #                   later calls with the same NAME re-enter the same container
@@ -114,11 +116,12 @@ engine_select run-claude.sh || exit 1
 engine_user_flag
 engine_run_opts
 
-# Extract long flags (--edit, --del, --reseed, --mem-from, --mem-to) before getopts
+# Extract long flags (--edit, --del, --reseed, --no-git-init, --mem-from, --mem-to) before getopts
 # (which only handles short opts). Stop at `--` so agent passthrough args keep their own.
 EDIT=0
 DEL=0
 RESEED=0
+NO_GIT_INIT=0
 DEL_NAME=""
 _args=(); _stop=0; _want_name=0
 for _a in "$@"; do
@@ -133,6 +136,7 @@ for _a in "$@"; do
       --edit)     EDIT=1; continue ;;
       --del)      DEL=1; _want_name=1; continue ;;
       --reseed)   RESEED=1; continue ;;
+      --no-git-init) NO_GIT_INIT=1; continue ;;
       --mem-from) MEM_FROM=1; continue ;;
       --mem-to)   MEM_TO=1; continue ;;
     esac
@@ -157,7 +161,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,56p' "$0"; exit 0 ;;
+    h) sed -n '2,58p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -212,6 +216,7 @@ fi
 if [ "$ISOLATE" -eq 1 ]; then
   # Per-project AND per-agent, keyed to the repo's root commit rather than the
   # folder name: ~/.docker-agent/<repo-name>-<root12>/claude
+  [ "$NO_GIT_INIT" -eq 1 ] || store_git_init "$WORK_DIR" run-claude.sh || exit 1
   _id="$(store_repo_id "$WORK_DIR" run-claude.sh)" || exit 1
   CONFIG_DIR="$(store_dir_for "$_id" "$(store_label "$WORK_DIR")")/claude"
   # Seed credentials so the fresh isolated config is already logged in.

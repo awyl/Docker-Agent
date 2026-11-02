@@ -3,12 +3,13 @@
 #
 # Usage:
 #   run-pi.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
-#             [--del [STORE]] [--reseed] [-- <pi args>]
+#             [--del [STORE]] [--reseed] [--no-git-init] [-- <pi args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<repo-name>-<root12>/pi, keyed to the repo's
 #                   root commit so renaming or moving the checkout still finds it.
-#                   The work dir must be a git repo with at least one commit.
+#                   A work dir that is not a git repo (or has no commits) gets
+#                   `git init` + an empty root commit automatically.
 #                   Fresh config (no host extensions); auth.json is seeded from
 #                   ~/.pi so pi stays logged in, and the bundled default config
 #                   (pi-default-config/) is seeded if the dir has none.
@@ -25,6 +26,7 @@
 #   --reseed        Reset this config's bundled files to pi-default-config/,
 #                   then exit (no container). Each overwritten file is kept as
 #                   <file>.bak; auth, packages and sessions stay. Not valid with -H.
+#   --no-git-init   Don't auto `git init`/commit the work dir; fail instead.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `pi`.
@@ -116,11 +118,12 @@ engine_select run-pi.sh || exit 1
 engine_user_flag
 engine_run_opts
 
-# Extract the long flags --edit/--del/--reseed before getopts (which only handles short opts).
+# Extract the long flags --edit/--del/--reseed/--no-git-init before getopts (which only handles short opts).
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
 EDIT=0
 DEL=0
 RESEED=0
+NO_GIT_INIT=0
 DEL_NAME=""
 _args=(); _stop=0; _want_name=0
 for _a in "$@"; do
@@ -133,6 +136,7 @@ for _a in "$@"; do
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; _want_name=1; continue; fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--reseed" ]; then RESEED=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--no-git-init" ]; then NO_GIT_INIT=1; continue; fi
   _args+=("$_a")
 done
 set -- ${_args[@]+"${_args[@]}"}
@@ -149,7 +153,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,52p' "$0"; exit 0 ;;
+    h) sed -n '2,54p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -204,6 +208,7 @@ fi
 if [ "$ISOLATE" -eq 1 ]; then
   # Per-project AND per-agent, keyed to the repo's root commit rather than the
   # folder name: ~/.docker-agent/<repo-name>-<root12>/pi
+  [ "$NO_GIT_INIT" -eq 1 ] || store_git_init "$WORK_DIR" run-pi.sh || exit 1
   _id="$(store_repo_id "$WORK_DIR" run-pi.sh)" || exit 1
   CONFIG_SRC="$(store_dir_for "$_id" "$(store_label "$WORK_DIR")")/pi"
   # Seed auth so the fresh isolated config is already logged in.

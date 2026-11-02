@@ -226,18 +226,19 @@ config dir below is used only with `-H`:
 
 ```bash
 ./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [--del] \
-                [--reseed] [--mem-from | --mem-to] [-- <agent args>]
+                [--reseed] [--no-git-init] [--mem-from | --mem-to] [-- <agent args>]
 ```
 
 | Flag | Meaning | Default |
 |------|---------|---------|
-| _(none)_ | Isolated per-project config in `~/.docker-agent/<repo-name>-<root12>/<agent>`, seeded from the host so it stays logged in. Keyed to the repo's root commit, so renaming or moving the checkout still finds it — the work dir must be a git repo with at least one commit | **the default** |
+| _(none)_ | Isolated per-project config in `~/.docker-agent/<repo-name>-<root12>/<agent>`, seeded from the host so it stays logged in. Keyed to the repo's root commit, so renaming or moving the checkout still finds it — the work dir must be a git repo with at least one commit. Claude and Pi create one for you (`git init` + empty root commit; refuses `$HOME`); Goose and Hermes fail with instructions | **the default** |
 | `-i` | Force the isolated config (explicit form of the default) | — |
 | `-H` | Use the host config dir directly (the agent default in the table above) | — |
 | `-c CONFIG_DIR` | Use a custom config dir | — |
 | `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
 | `--del [STORE]` | Delete this agent's isolated config, then exit — no container. Prompts you to type the name back to confirm. Isolated config only (refuses `-H`/`-c`); prunes the store dir once empty; never touches `~/.docker-agent/gitconfig`. With no `STORE` the work dir's repo names the store; pass a store directory name to delete one whose checkout is already gone (a miss prints the list) | — |
 | `--reseed` | Reset the config's settings to the bundled defaults, then exit — no container (Claude and Pi). Claude: resets from `claude-default-config/`. Overwrites the bundled files (`settings.json`, …) and the default `claude.json` keys (`mcpServers`), and pins plugins the defaults no longer enable to off. Credentials, memory, sessions, history and plugin caches stay; the old files are kept as `settings.json.bak` / `claude.json.bak` in the config dir. Pi: overwrites every file in `pi-default-config/`, keeping each replaced one as `<file>.bak`; auth, packages and sessions stay. Refuses `-H` | — |
+| `--no-git-init` | Don't auto `git init` / root-commit a work dir that lacks one; fail with instructions instead (Claude and Pi) | — |
 | `--mem-from` | Copy the work-dir memory **from** host into the config dir, then exit — no container (Claude only) | — |
 | `--mem-to` | Copy the work-dir memory **to** host from the config dir, then exit — no container (Claude only) | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
@@ -261,7 +262,7 @@ logs); point-in-time copy, last writer wins. The two are mutually exclusive and
 respect `-i`/`-H`/`-c` and `-w`.
 
 `run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags (except the
-Claude-only `--mem-from`/`--mem-to`; `--reseed` is Claude and Pi only).
+Claude-only `--mem-from`/`--mem-to`; `--reseed` and `--no-git-init` are Claude and Pi only).
 `run-goose.sh` with no extra args starts an interactive `goose session`;
 `run-hermes.sh` with no args starts the interactive Hermes CLI.
 

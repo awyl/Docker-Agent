@@ -45,6 +45,29 @@ MSG
   printf '%s\n' "${root:0:12}"
 }
 
+# Give a work dir the repo identity store_repo_id needs: `git init` if it is
+# not inside a repo, then an empty root commit if the repo has none. A dir
+# already inside a repo (e.g. a subdirectory) is left alone. Refuses $HOME.
+#   $1 work dir   $2 calling script name
+store_git_init() {
+  local wd="$1" prog="$2"
+  if ! git -C "$wd" rev-parse --show-toplevel >/dev/null 2>&1; then
+    if [ "$wd" = "$HOME" ]; then
+      echo "$prog: refusing to git init your home dir; pass -w or --no-git-init" >&2
+      return 1
+    fi
+    git -C "$wd" init -q || return 1
+    echo "$prog: initialised git repo in $wd" >&2
+  fi
+  if ! git -C "$wd" rev-parse -q --verify HEAD >/dev/null; then
+    # Fallback author so a host with no git identity can still make the commit.
+    local id=()
+    git -C "$wd" config user.email >/dev/null || id=(-c user.name=docker-agent -c user.email=docker-agent@localhost)
+    git -C "$wd" ${id[@]+"${id[@]}"} commit -q --allow-empty -m "init $(basename "$wd")" || return 1
+    echo "$prog: made empty root commit in $wd" >&2
+  fi
+}
+
 # Print the human label for a work dir's store: the basename of the REPO ROOT,
 # not of the work dir. Running in a subdirectory shares the repo's one store,
 # so the label should name the repo.
