@@ -63,5 +63,7 @@
     "ponytail@ponytail": true
   },
   "enableArtifact": false,
-  "promptSuggestionEnabled": false
+  "promptSuggestionEnabled": false,
+  "prefersReducedMotion": true,
+  "spinnerTipsEnabled": false
 }
