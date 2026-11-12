@@ -33,7 +33,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         ca-certificates curl wget gnupg \
         git openssh-client \
-        build-essential pkg-config libssl-dev mold \
+        build-essential pkg-config libssl-dev \
         python3 python3-venv python3-dev \
         ripgrep fd-find jq fzf bat unzip xz-utils \
         neovim less locales; \
@@ -78,18 +78,18 @@ RUN set -eux; \
 
 # rtk: token-compressing proxy the agent hooks call (e.g. `rtk hook claude`).
 # Prebuilt release binary instead of `cargo install` from source — much faster
-# build, and the x86_64 musl asset is statically linked so it runs regardless of
+# build, and the musl assets are statically linked so they run regardless of
 # the container's glibc. Pinned; override with --build-arg RTK_TAG=vX.Y.Z.
 # TARGETARCH is set by buildx; falls back to amd64 under a plain `docker build`.
 # sccache version for cargo-binstall. Bare semver (no leading "v"): binstall's
 # version spec is `sccache@X.Y.Z`. Override with --build-arg SCCACHE_VERSION=X.Y.Z.
 ARG SCCACHE_VERSION=0.17.0
-ARG RTK_TAG=v0.49.0
+ARG RTK_TAG=v1.2.0
 ARG TARGETARCH
 RUN set -eux; \
     case "${TARGETARCH:-amd64}" in \
         amd64) rtk_triple=x86_64-unknown-linux-musl ;; \
-        arm64) rtk_triple=aarch64-unknown-linux-gnu ;; \
+        arm64) rtk_triple=aarch64-unknown-linux-musl ;; \
         *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
     esac; \
     curl -fsSL \
@@ -99,6 +99,16 @@ RUN set -eux; \
     install -m 0755 "$(find /tmp -type f -name rtk | head -1)" /usr/local/bin/rtk; \
     rm -rf /tmp/*; \
     rtk --version
+
+# mold: default native linker (see $CARGO_HOME/config.toml above). Upstream
+# prebuilt release instead of Debian's older apt package. Asset names use
+# `uname -m` (x86_64/aarch64). Override with --build-arg MOLD_VERSION=X.Y.Z.
+ARG MOLD_VERSION=3.0.0
+RUN set -eux; \
+    curl -fsSL \
+        "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-$(uname -m)-linux.tar.gz" \
+        | tar -xz -C /usr/local --strip-components=1 --exclude='*/share'; \
+    mold --version
 
 # sccache: compiler cache for Rust. Installed with cargo-binstall (prebuilt
 # binary, no source compile). cargo-binstall itself comes from its official

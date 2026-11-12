@@ -173,7 +173,8 @@ docker build -f Dockerfile.hermes \
 Build args:
 
 - `UID` / `GID` — owner of mounted files (default `1000`), all agent images.
-- `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v0.49.0`), base image.
+- `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v1.2.0`), base image.
+- `MOLD_VERSION` — mold linker release to download as a prebuilt binary (default `3.0.0`), base image. Cargo links native targets with it.
 - `SCCACHE_VERSION` — sccache version for `cargo binstall`, bare semver (default `0.17.0`), base image.
 - `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
