@@ -47,7 +47,6 @@ source code of crates (extracted under `registry/src`, git checkouts under
 Adds, on top of the base:
 
 - `@anthropic-ai/claude-code` — the CLI (entrypoint).
-- `ccstatusline` — referenced by the host `settings.json` status line.
 
 `rtk` (the token-compressing proxy the host `PreToolUse(Bash)` hook calls via
 `rtk hook claude`) lives in `agentic-dev-base`, so this and every other agent
@@ -351,13 +350,15 @@ enables (in `settings.json`):
 - **idle-compact** — local mod in `mods/idle-compact/`, loaded via
   `env.CLAUDE_CODE_PLUGIN_DIRS`: compacts after 55 idle minutes, before the 1h
   prompt cache expires (edit `IDLE_MS` in `hooks/register.ts` for API-key 5m caches).
+- **statusline** — `statusline.mjs` (Node stdlib + git, no npm dep), wired as
+  `statusLine`: model, context tokens/%, git branch and +/- lines on one line;
+  5h/7d rate-limit % and reset countdown on the next. Replaces `ccstatusline`.
 
 `caveman`, `i-have-adhd` and `ponytail` come from GitHub marketplaces declared
 in the seeded `settings.json`; the rest come from the built-in
 `claude-plugins-official` marketplace.
 
-Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook) and
-`ccstatusline` (status line).
+Hooks that call host binaries are satisfied in the image: `rtk` (Bash hook).
 
 ## Running on macOS
 

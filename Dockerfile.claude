@@ -16,12 +16,12 @@ FROM agentic-dev-base:latest
 ARG UID=1000
 ARG GID=1000
 
-# Claude Code CLI + ccstatusline (host settings.json references it as statusLine).
+# Claude Code CLI.
 # npm 12 skips dependency install scripts unless allowlisted, which leaves
 # claude-code's bin/claude.exe as a stub; run its postinstall (which copies the
 # platform-native binary into place) explicitly, then prove the CLI starts.
 RUN set -eux; \
-    npm install -g @anthropic-ai/claude-code ccstatusline; \
+    npm install -g @anthropic-ai/claude-code; \
     node "$(npm root -g)/@anthropic-ai/claude-code/install.cjs"; \
     claude --version; \
     npm cache clean --force; \
@@ -40,11 +40,6 @@ ENV HOME=/home/dev
 # The image pins the CLI version; rebuild to update. In-container auto-update
 # can't work (root-owned npm prefix, npm 12 skips the native-binary postinstall).
 ENV DISABLE_AUTOUPDATER=1
-
-# Bake the host's ccstatusline appearance config into the image. It lives
-# outside ~/.claude, so the runtime config-dir mount doesn't cover it; baking it
-# here makes every container's statusline match the host without a bind mount.
-COPY --chown=${UID}:${GID} claude-default-config/ccstatusline/settings.json /home/dev/.config/ccstatusline/settings.json
 
 WORKDIR /work
 
