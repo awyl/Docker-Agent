@@ -2,18 +2,18 @@
   "$schema": "https://raw.githubusercontent.com/cortexkit/magic-context/master/assets/magic-context.schema.json",
   "historian": {
     "opencode": {
-      "model": "aiproxy/opencode-go/mimo-v2.5"
+      "model": "aiproxy/opencode-go/deepseek-v4.1-flash"
     },
     "pi": {
-      "model": "aiproxy/opencode-go/mimo-v2.5"
+      "model": "aiproxy/opencode-go/deepseek-v4.1-flash"
     }
   },
   "dreamer": {
     "opencode": {
-      "model": "aiproxy/opencode-go/mimo-v2.5"
+      "model": "aiproxy/opencode-go/deepseek-v4.1-flash"
     },
     "pi": {
-      "model": "aiproxy/opencode-go/mimo-v2.5"
+      "model": "aiproxy/opencode-go/deepseek-v4.1-flash"
     }
   },
   "embedding": {
