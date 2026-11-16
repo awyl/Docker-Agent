@@ -70,7 +70,7 @@ defaults into a config that already exists, run `run-claude.sh --reseed`.
 Adds `@earendil-works/pi-coding-agent` (binary `pi`) on top of the base.
 
 The repo ships a default Pi config in `pi-default-config/` (plugin list,
-keybindings, caveman + magic-context settings, the `rtk` extension). `run-pi.sh`
+keybindings, caveman + magic-context settings, the `rtk` and static-working-indicator extensions). `run-pi.sh`
 seeds it into any config dir that has no config yet — i.e. lacks
 `agent/settings.json` — covering `-i` isolated, the default `~/.pi`, and custom
 `-c` dirs. Existing config is never overwritten (it copies no-clobber, so a
