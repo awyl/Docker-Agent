@@ -137,5 +137,9 @@ RUN set -eux; \
     python3 --version; uv --version; rtk --version; \
     git --version; rg --version; fd --version; jq --version; nvim --version | head -1
 
+# nvim is the default editor for every agent image (git commit, $EDITOR hooks).
+ENV EDITOR=nvim \
+    VISUAL=nvim
+
 WORKDIR /work
 CMD ["bash"]
