@@ -263,6 +263,16 @@ if [ "$EDIT" -eq 1 ]; then
   cd "$CONFIG_SRC" && exec $ED .
 fi
 
+# Superpowers >=7.0.2 re-injects its bootstrap on every request with
+# `timestamp: Date.now()`; magic-context re-tags it each time, so the prompt
+# prefix changes and the provider cache misses. Pin the timestamp. Re-applied
+# every launch since `pi update` restores the file; a fresh store gets it on
+# its second launch (pi installs the package inside the container).
+# perl, not sed -i: GNU and BSD sed disagree on -i.
+# ponytail: drop once upstream superpowers uses a stable timestamp.
+_sp="$CONFIG_SRC/agent/git/github.com/obra/superpowers/.pi/extensions/superpowers.ts"
+[ -f "$_sp" ] && perl -pi -e 's/timestamp: Date\.now\(\),/timestamp: 0,/' "$_sp"
+
 # --- Named container: a persistent sandbox we exec the agent into ---
 if [ -n "$NAME" ]; then
   if ctr_exists "$NAME"; then
