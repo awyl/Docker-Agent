@@ -203,6 +203,9 @@ mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"
 # Global skills (`npx skills add -g`) land in ~/.agents/skills, outside the
 # mounted config dir. Keep them under it as .agents so they persist per-config.
 mkdir -p "$CONFIG_SRC/.agents"
+# goose keeps sessions (sessions.db, used by `goose session -r` and chat recall)
+# in ~/.local/share/goose, outside the mounted config dir. Persist it as share/.
+mkdir -p "$CONFIG_SRC/share"
 
 # Seed the bundled default config into a config dir that has none yet (no
 # config.yaml). cp -rn never clobbers; `|| true` because macOS cp -n exits 1
@@ -245,6 +248,7 @@ if [ -n "$NAME" ]; then
       ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
       -v "$CONFIG_SRC/.agents":/home/dev/.agents \
+      -v "$CONFIG_SRC/share":/home/dev/.local/share/goose \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
       -v "$CARGO_HOST/git":/home/dev/.cargo/git \
@@ -261,6 +265,7 @@ exec "$ENGINE" run --rm -it $USER_FLAG \
   ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
   -v "$CONFIG_SRC/.agents":/home/dev/.agents \
+  -v "$CONFIG_SRC/share":/home/dev/.local/share/goose \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
   -v "$CARGO_HOST/git":/home/dev/.cargo/git \

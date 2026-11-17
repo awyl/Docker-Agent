@@ -81,12 +81,15 @@ push updated defaults into a config that already exists, run `run-pi.sh --reseed
 Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
 so it uses file-based secrets (`~/.config/goose/secrets.yaml`) instead of a
 system keyring, which doesn't exist in a container.
+Sessions (`sessions.db`, for `goose session -r` and chat recall) persist in
+`<config>/share`, mounted at `~/.local/share/goose`.
 
 The repo ships a default goose config in `goose-default-config/`: the host
 aiproxy as a custom provider (`custom_providers/aiproxy.json`, default model
 `opencode-go/deepseek-v4.1-flash` like pi, with its pi.dev catalog limits: 1M
 context, 384k output, thinking `high`; goose's session id is sent as
-`x-opencode-session`) and as an MCP server, nothing else. Switch model mid-session
+`x-opencode-session`; `openai-codex/gpt-6.1-terra` is listed too, 500k context,
+thinking `high`) and as an MCP server, nothing else. Switch model mid-session
 with `/model <aiproxy model id>`; models not listed in `aiproxy.json` get goose's
 128k default context. goose fills in its own built-in
 extensions (developer, analyze, todo, skills, …) with upstream defaults on load.

@@ -15,7 +15,15 @@
       "context_limit": 1000000,
       "reasoning": true,
       "thinking_preservation_format": "reasoning_content",
-      "request_params": { "reasoning_effort": "high", "max_tokens": 384000 }
+      "request_params": {
+        "reasoning_effort": "high",
+        "max_tokens": 384000
+      }
+    },
+    {
+      "name": "openai-codex/gpt-6.1-terra",
+      "context_limit": 500000,
+      "reasoning": true
     }
   ]
 }
