@@ -28,14 +28,12 @@ case "\$1" in list|ps) exit 0 ;; info) echo "rootless: false" ;; esac
 EOF
   chmod +x "$T/stub/$e"
 done
-# run-browser.sh polls the view with curl; stub it so the happy path completes.
-printf '#!/usr/bin/env bash\nexit 0\n' > "$T/stub/curl"; chmod +x "$T/stub/curl"
 
 P="$T/proj"; mkdir -p "$P"; git -C "$P" init -q; git -C "$P" commit -q --allow-empty -m "init proj"
 run(){ local eng="$1" prog="$2"; shift 2
        env HOME="$T/home" PATH="$T/stub:$PATH" ENGINE="$eng" bash "$REPO/$prog" "$@" 2>&1; }
 
-for prog in run-pi.sh run-claude.sh run-goose.sh run-hermes.sh; do
+for prog in run-pi.sh run-claude.sh run-goose.sh; do
   echo "== $prog =="
   out=$(run container "$prog" -w "$P")
   ck "container: run --rm -it" "container run --rm -it" "$out"
@@ -59,16 +57,6 @@ for prog in run-pi.sh run-claude.sh run-goose.sh run-hermes.sh; do
   ck "docker: creates"         "docker run -d --name box"    "$out"
   ck "docker: execs in"        "docker exec -it"             "$out"
 done
-
-echo "== run-browser.sh =="
-out=$(run container run-browser.sh -w "$P" -n view)
-ck "container: creates view"  "container run -d --name view" "$out"
-ck "container: publishes"     "-p 127.0.0.1:8444:8444"       "$out"
-ck "container: stop wording"  "container delete --force"     "$out"
-nk "container: no docker rm"  "docker rm -f"                 "$out"
-out=$(run docker run-browser.sh -w "$P" -n view2)
-ck "docker: creates view"     "docker run -d --name view2"   "$out"
-ck "docker: stop wording"     "docker rm -f"                 "$out"
 
 echo "== build.sh =="
 out=$(env PATH="$T/stub:$PATH" ENGINE=container bash "$REPO/build.sh" pi 2>&1)

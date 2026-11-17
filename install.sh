@@ -7,7 +7,6 @@
 #   run-claude.sh -> agent-claude
 #   run-pi.sh     -> agent-pi
 #   run-goose.sh  -> agent-goose
-#   run-hermes.sh -> agent-hermes
 #   build.sh      -> agent-build
 #
 # Usage:
@@ -28,7 +27,6 @@ links=(
   "run-claude.sh:agent-claude"
   "run-pi.sh:agent-pi"
   "run-goose.sh:agent-goose"
-  "run-hermes.sh:agent-hermes"
   "build.sh:agent-build"
 )
 

@@ -6,10 +6,8 @@
 # owned correctly on the host.
 #
 #   agentic-dev-base:latest     (Dockerfile)         <- shared base, built first
-#   agentic-browser-base:latest (Dockerfile.browser) <- base + labwc/wayvnc/noVNC + Camoufox
 #   agentic-claude:latest       (Dockerfile.claude)
 #   agentic-goose:latest        (Dockerfile.goose)
-#   agentic-hermes:latest       (Dockerfile.hermes)  <- FROM agentic-browser-base
 #   agentic-pi:latest           (Dockerfile.pi)
 #
 # Usage:
@@ -24,7 +22,6 @@
 #
 # Env:
 #   UID, GID      override the uid/gid baked in (default: current user)
-#   HERMES_REF    git ref for the hermes build (default: main)
 #   ENGINE        container engine: docker, or `container` for Apple's CLI on
 #                 macOS. Auto-detected from PATH when unset (docker preferred).
 set -euo pipefail
@@ -49,13 +46,11 @@ engine_select build.sh || exit 1
 
 UID_ARG="${UID:-$(id -u)}"
 GID_ARG="${GID:-$(id -g)}"
-HERMES_REF="${HERMES_REF:-main}"
 
 # agent name -> dockerfile : image
 agents=(
   "claude:Dockerfile.claude:agentic-claude:latest"
   "goose:Dockerfile.goose:agentic-goose:latest"
-  "hermes:Dockerfile.hermes:agentic-hermes:latest"
   "pi:Dockerfile.pi:agentic-pi:latest"
 )
 
@@ -99,7 +94,7 @@ known() {
 if [ "$base_only" -eq 0 ]; then
   for name in ${selected[@]+"${selected[@]}"}; do
     if ! known "$name"; then
-      echo "ERROR: unknown agent '$name' (known: claude goose hermes pi)" >&2
+      echo "ERROR: unknown agent '$name' (known: claude goose pi)" >&2
       exit 1
     fi
   done
@@ -116,17 +111,6 @@ echo "==> Building agentic-dev-base:latest"
 "$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
   ${base_flags[@]+"${base_flags[@]}"} -t agentic-dev-base:latest .
 
-# Shared browser layer (Wayland view + Camoufox) that hermes is re-based on. Built
-# right after the base so `--base-only` refreshes both base images together.
-# Skipped when hermes (its only consumer) isn't being built.
-if [ "$base_only" -eq 1 ] || [[ " ${selected[*]-} " == *" hermes "* ]]; then
-  echo "==> Building agentic-browser-base:latest  (Dockerfile.browser)"
-  "$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
-    ${base_flags[@]+"${base_flags[@]}"} -f Dockerfile.browser \
-    --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
-    -t agentic-browser-base:latest .
-fi
-
 if [ "$base_only" -eq 1 ]; then
   echo "==> Done (base only)."
   exit 0
@@ -139,14 +123,10 @@ for name in ${selected[@]+"${selected[@]}"}; do
     dockerfile="${rest%%:*}"
     image="${rest#*:}"
 
-    extra=()
-    [ "$name" = "hermes" ] && extra+=(--build-arg "HERMES_REF=$HERMES_REF")
-
     echo "==> Building $image  ($dockerfile)"
     "$ENGINE" build ${docker_flags[@]+"${docker_flags[@]}"} \
       ${agent_flags[@]+"${agent_flags[@]}"} -f "$dockerfile" \
       --build-arg "UID=$UID_ARG" --build-arg "GID=$GID_ARG" \
-      ${extra[@]+"${extra[@]}"} \
       -t "$image" .
   done
 done
