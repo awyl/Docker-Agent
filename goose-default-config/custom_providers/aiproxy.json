@@ -1,0 +1,21 @@
+{
+  "name": "aiproxy",
+  "engine": "openai",
+  "display_name": "aiproxy",
+  "description": "Host aiproxy (OpenAI-compatible)",
+  "api_key_env": "AIPROXY_API_KEY",
+  "base_url": "http://host.containers.internal:9999",
+  "base_path": "v1/chat/completions",
+  "session_id_header_override": "x-opencode-session",
+  "preserves_thinking": true,
+  "supports_streaming": true,
+  "models": [
+    {
+      "name": "opencode-go/deepseek-v4.1-flash",
+      "context_limit": 1000000,
+      "reasoning": true,
+      "thinking_preservation_format": "reasoning_content",
+      "request_params": { "reasoning_effort": "high", "max_tokens": 384000 }
+    }
+  ]
+}

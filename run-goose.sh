@@ -2,13 +2,16 @@
 # Run the goose agent in a container.
 #
 # Usage:
-#   run-goose.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [-- <goose args>]
+#   run-goose.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit]
+#                [--del [STORE]] [--reseed] [--no-git-init] [-- <goose args>]
 #
 #   (default)       Isolated per-project, per-agent config in
 #                   ~/.docker-agent/<repo-name>-<root12>/goose, keyed to the repo's
 #                   root commit so renaming or moving the checkout still finds it.
-#                   The work dir must be a git repo with at least one commit. Fresh config;
-#                   config.yaml is seeded from the host.
+#                   A work dir that is not a git repo (or has no commits) gets
+#                   `git init` + an empty root commit automatically. Fresh config;
+#                   the bundled default config (goose-default-config/: aiproxy
+#                   provider + MCP) is seeded if the dir has no config.yaml.
 #   -i              Force the isolated config (this is the default; explicit form).
 #   -H              Use the host config dir (~/.config/goose) directly.
 #   -c CONFIG_DIR   Use a custom config dir.
@@ -19,6 +22,10 @@
 #                   config (not -H/-c). With no STORE the work dir's repo names
 #                   the store; pass a STORE directory name (see the list printed
 #                   on a miss) to delete one whose checkout is already gone.
+#   --reseed        Reset this config's bundled files to goose-default-config/,
+#                   then exit (no container). Each overwritten file is kept as
+#                   <file>.bak; sessions stay. Not valid with -H.
+#   --no-git-init   Don't auto `git init`/commit the work dir; fail instead.
 #   -w WORK_DIR     Codebase dir to mount as /work (default: current dir)
 #   -n NAME         Reuse a persistent named container (see run-claude.sh).
 #   anything after the options is passed through to `goose`.
@@ -28,6 +35,7 @@
 #   run-goose.sh                       # isolated config -> goose session (default)
 #   run-goose.sh -H                    # host ~/.config/goose config
 #   run-goose.sh -n myproj             # create/reuse "myproj"
+#   run-goose.sh --reseed              # reset config to defaults
 #   run-goose.sh -- --version          # pass args to goose
 #   run-goose.sh -- configure          # run goose configure
 #
@@ -96,10 +104,12 @@ engine_select run-goose.sh || exit 1
 engine_user_flag
 engine_run_opts
 
-# Extract the long flags --edit/--del before getopts (which only handles short opts).
+# Extract the long flags --edit/--del/--reseed/--no-git-init before getopts (which only handles short opts).
 # Stop at `--` so agent passthrough args keep their own --edit, if any.
 EDIT=0
 DEL=0
+RESEED=0
+NO_GIT_INIT=0
 DEL_NAME=""
 _args=(); _stop=0; _want_name=0
 for _a in "$@"; do
@@ -111,12 +121,14 @@ for _a in "$@"; do
   fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--edit" ]; then EDIT=1; continue; fi
   if [ "$_stop" -eq 0 ] && [ "$_a" = "--del" ]; then DEL=1; _want_name=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--reseed" ]; then RESEED=1; continue; fi
+  if [ "$_stop" -eq 0 ] && [ "$_a" = "--no-git-init" ]; then NO_GIT_INIT=1; continue; fi
   _args+=("$_a")
 done
 set -- ${_args[@]+"${_args[@]}"}
 
-if [ $((DEL + EDIT)) -gt 1 ]; then
-  echo "run-goose.sh: choose only one of --del, --edit" >&2
+if [ $((DEL + EDIT + RESEED)) -gt 1 ]; then
+  echo "run-goose.sh: choose only one of --del, --edit, --reseed" >&2
   exit 2
 fi
 
@@ -127,7 +139,7 @@ while getopts "c:iHw:n:h" opt; do
     H) HOST=1 ;;
     w) WORK_DIR="$OPTARG" ;;
     n) NAME="$OPTARG" ;;
-    h) sed -n '2,38p' "$0"; exit 0 ;;
+    h) sed -n '2,46p' "$0"; exit 0 ;;
     *) exit 2 ;;
   esac
 done
@@ -140,6 +152,10 @@ if [ $((ISOLATE + HOST + CONFIG_EXPLICIT)) -gt 1 ]; then
 fi
 if [ "$HOST" -eq 0 ] && [ "$CONFIG_EXPLICIT" -eq 0 ]; then
   ISOLATE=1
+fi
+if [ "$RESEED" -eq 1 ] && [ "$HOST" -eq 1 ]; then
+  echo "run-goose.sh: --reseed would overwrite the host ~/.config/goose config; not valid with -H" >&2
+  exit 2
 fi
 
 # Resolve the work dir up front; -i derives the config dir name from it.
@@ -178,16 +194,35 @@ fi
 if [ "$ISOLATE" -eq 1 ]; then
   # Per-project AND per-agent, keyed to the repo's root commit rather than the
   # folder name: ~/.docker-agent/<repo-name>-<root12>/goose
+  [ "$NO_GIT_INIT" -eq 1 ] || store_git_init "$WORK_DIR" run-goose.sh || exit 1
   _id="$(store_repo_id "$WORK_DIR" run-goose.sh)" || exit 1
   CONFIG_SRC="$(store_dir_for "$_id" "$(store_label "$WORK_DIR")")/goose"
-  # Seed config so the fresh isolated config keeps the host provider/model.
-  if [ ! -e "$CONFIG_SRC/config.yaml" ] && [ -e "$HOME/.config/goose/config.yaml" ]; then
-    mkdir -p "$CONFIG_SRC"
-    cp "$HOME/.config/goose/config.yaml" "$CONFIG_SRC/config.yaml"
-  fi
 fi
 
 mkdir -p "$CONFIG_SRC"; CONFIG_SRC="$(cd "$CONFIG_SRC" && pwd)"
+# Global skills (`npx skills add -g`) land in ~/.agents/skills, outside the
+# mounted config dir. Keep them under it as .agents so they persist per-config.
+mkdir -p "$CONFIG_SRC/.agents"
+
+# Seed the bundled default config into a config dir that has none yet (no
+# config.yaml). cp -rn never clobbers; `|| true` because macOS cp -n exits 1
+# when it skips a file, which under set -e kills the launch.
+DEFAULT_CONFIG="$SCRIPT_DIR/goose-default-config"
+if [ ! -e "$CONFIG_SRC/config.yaml" ]; then
+  cp -rn "$DEFAULT_CONFIG/." "$CONFIG_SRC/" || true
+fi
+
+# --reseed: overwrite every bundled file with the repo default, then exit. Each
+# file about to be replaced is kept as <file>.bak first; anything not in the
+# bundle (sessions, ...) is left alone. -H is refused above.
+if [ "$RESEED" -eq 1 ]; then
+  (cd "$DEFAULT_CONFIG" && find . -type f) | while IFS= read -r _f; do
+    if [ -e "$CONFIG_SRC/$_f" ]; then cp "$CONFIG_SRC/$_f" "$CONFIG_SRC/$_f.bak"; fi
+  done
+  cp -r "$DEFAULT_CONFIG/." "$CONFIG_SRC/"
+  echo "reseeded $CONFIG_SRC from defaults (old files kept as *.bak)"
+  exit 0
+fi
 
 # --edit: open the resolved (now-seeded) host config dir in an editor, then exit.
 if [ "$EDIT" -eq 1 ]; then
@@ -209,6 +244,7 @@ if [ -n "$NAME" ]; then
     "$ENGINE" run -d --name "$NAME" $USER_FLAG \
       ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
       -v "$CONFIG_SRC":"$CONFIG_DST" \
+      -v "$CONFIG_SRC/.agents":/home/dev/.agents \
       -v "$WORK_DIR":/work \
       -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
       -v "$CARGO_HOST/git":/home/dev/.cargo/git \
@@ -224,6 +260,7 @@ fi
 exec "$ENGINE" run --rm -it $USER_FLAG \
   ${ENGINE_RUN_OPTS[@]+"${ENGINE_RUN_OPTS[@]}"} \
   -v "$CONFIG_SRC":"$CONFIG_DST" \
+  -v "$CONFIG_SRC/.agents":/home/dev/.agents \
   -v "$WORK_DIR":/work \
   -v "$SCCACHE_CACHE":/home/dev/.cache/sccache \
   -v "$CARGO_HOST/git":/home/dev/.cargo/git \

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks that all four runners resolve their store identically -- if they ever
+# Checks that all three runners resolve their store identically -- if they ever
 # disagree, one project ends up with two stores. Sandboxed HOME in a temp dir;
 # no container is started (`--edit` cds into the resolved store and opens ".",
 # so VISUAL='sh -c pwd' prints the resolved path).
@@ -16,7 +16,7 @@ ck(){ if [[ "$3" == *"$2"* ]]; then echo "    PASS  $1"; pass=$((pass+1))
       else echo "    FAIL  $1"; echo "          want ~ $2"; echo "          got    $3"; fail=$((fail+1)); fi; }
 
 mkdir -p "$T/home"
-for spec in "run-pi.sh:pi" "run-claude.sh:claude" "run-goose.sh:goose" "run-hermes.sh:hermes"; do
+for spec in "run-pi.sh:pi" "run-claude.sh:claude" "run-goose.sh:goose"; do
   prog="${spec%%:*}"; agent="${spec##*:}"
   echo "== $prog =="
   run(){ env HOME="$T/home" VISUAL='sh -c pwd' bash "$REPO/$prog" "$@" 2>&1; }
@@ -29,8 +29,8 @@ for spec in "run-pi.sh:pi" "run-claude.sh:claude" "run-goose.sh:goose" "run-herm
   mv "$P" "$T/$agent-renamed"
   ck "survives rename"            ".docker-agent/$agent-proj-$ID/$agent" "$(run --edit -w "$T/$agent-renamed")"
 
-  # pi/claude auto `git init` unless told not to; goose/hermes always fail.
-  ng=(); case "$agent" in pi|claude) ng=(--no-git-init) ;; esac
+  # every runner auto `git init`s unless told not to.
+  ng=(--no-git-init)
   mkdir -p "$T/$agent-plain"
   out=$(run --edit ${ng[@]+"${ng[@]}"} -w "$T/$agent-plain"); rc=$?
   ck "non-git exits 1" "1" "$rc"

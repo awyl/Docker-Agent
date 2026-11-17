@@ -3,11 +3,9 @@
 Docker images for agentic development:
 
 1. **`agentic-dev-base`** — a language/tooling base image (Rust, Node.js, Bun, Python3, plus the common Unix toolkit).
-2. **`agentic-browser-base`** — base + [labwc](https://labwc.github.io/) + [wayvnc](https://github.com/any1/wayvnc) + [noVNC](https://novnc.com/) (web remote view) + [Camoufox](https://camoufox.com) (stealth Firefox). A reusable layer for agents that drive a browser.
-3. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
-4. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
-5. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
-6. **`agentic-hermes`** — browser-base + the [Hermes agent](https://github.com/NousResearch/hermes-agent) as entrypoint.
+2. **`agentic-claude`** — base + the Claude Code CLI as entrypoint.
+3. **`agentic-pi`** — base + the [Pi coding agent](https://pi.dev) as entrypoint.
+4. **`agentic-goose`** — base + the [goose](https://github.com/aaif-goose/goose) agent as entrypoint.
 
 Each agent image runs against a bind-mounted codebase and a bind-mounted config
 dir, as a non-root `dev` user whose UID/GID match the host owner of mounted files.
@@ -84,52 +82,16 @@ Adds the `goose` CLI on top of the base. Built with `GOOSE_DISABLE_KEYRING=1`
 so it uses file-based secrets (`~/.config/goose/secrets.yaml`) instead of a
 system keyring, which doesn't exist in a container.
 
-### `agentic-browser-base` (base + Wayland view + Camoufox)
-
-A reusable layer between the base and any browser-driving agent. Everything in
-the view stack comes from Debian trixie main — no third-party repo, no
-compilation. Adds:
-
-- **[labwc](https://labwc.github.io/)** — a wlroots compositor, run headless
-  (`WLR_BACKENDS=headless`, software renderer). It is the container's PID1, so
-  the compositor's death is the container's death.
-- **[wayvnc](https://github.com/any1/wayvnc)** — an RFB server that attaches to
-  labwc via `wlr-screencopy`. Bound to container-localhost, never exposed.
-- **[noVNC](https://novnc.com/)** — the browser client, served as static files
-  by `websockify`, which also proxies the WebSocket through to wayvnc.
-- **[Camoufox](https://camoufox.com)** — a stealth Firefox fork driven by
-  Playwright, in its own venv at `/opt/camoufox` (browser + GeoIP DB baked in).
-  `playwright` is pinned to `1.55.0` (newer releases send a viewport shape this
-  Camoufox build rejects). It runs as a native Wayland client
-  (`MOZ_ENABLE_WAYLAND=1`).
-
-Helpers on `PATH`: `with-view` (the entrypoint — prepares the Wayland runtime
-environment and execs labwc; labwc's own `/etc/labwc/autostart` then starts
-`wlr-randr`, `wayvnc` and `websockify`), `camoufox` (CLI), `camoufox-py` (the
-venv's Python), and `camoufox-open URL` (open a URL in a visible Camoufox window
-to eyeball via the view). Camoufox renders on the same compositor you are
-watching, so you see the exact browser the agent drives.
-
-**No TLS and no password.** `run-browser.sh` publishes the port to `127.0.0.1`
-only, so the view is not reachable from the LAN. Tunnel over SSH or Tailscale to
-view it remotely. Clipboard rides `wl-clipboard` through wayvnc.
-
-Under rootless Docker the runners pass `--user 0:0` so bind mounts stay
-writable, but Firefox refuses to start as root when `$HOME` belongs to another
-user. `camoufox-py` therefore switches root to `HOME=/root`, and
-`/root/.cache/camoufox` symlinks to dev's cache so the fetched browser is still
-found.
-
-### `agentic-hermes`
-
-Adds the [Hermes agent](https://github.com/NousResearch/hermes-agent) (binary
-`hermes`) on top of **`agentic-browser-base`**, so the agent can drive Camoufox
-and you can watch it remotely (see `run-browser.sh`). Hermes is a Python app, so
-it's installed into an isolated venv at `/opt/hermes` (Python 3.11 via `uv`, with
-the `.[all]` extra and `ffmpeg`) and the launcher is symlinked onto the global
-`PATH`. The venv is kept out of `~/.hermes` because that dir is the
-runtime-mounted config. The entrypoint is bare `hermes`. Pin the clone with
-the `HERMES_REF` build arg (default `main`).
+The repo ships a default goose config in `goose-default-config/`: the host
+aiproxy as a custom provider (`custom_providers/aiproxy.json`, default model
+`opencode-go/deepseek-v4.1-flash` like pi, with its pi.dev catalog limits: 1M
+context, 384k output, thinking `high`; goose's session id is sent as
+`x-opencode-session`) and as an MCP server, nothing else. Switch model mid-session
+with `/model <aiproxy model id>`; models not listed in `aiproxy.json` get goose's
+128k default context. goose fills in its own built-in
+extensions (developer, analyze, todo, skills, …) with upstream defaults on load.
+`run-goose.sh` seeds it into any config dir with no `config.yaml` yet. To push
+updated defaults into a config that already exists, run `run-goose.sh --reseed`.
 
 ## Build
 
@@ -137,26 +99,17 @@ The easiest path is `./build.sh`, which builds the base image first, then each
 agent image with `UID`/`GID` matching your host user:
 
 ```bash
-./build.sh              # base + browser-base + all agents
-./build.sh claude pi    # base + browser-base + only the named agents
-./build.sh --base-only  # just the base images (dev-base + browser-base)
+./build.sh              # base + all agents
+./build.sh claude pi    # base + only the named agents
+./build.sh --base-only  # just the base image
 ./build.sh --no-cache   # extra flags are forwarded to docker build
 ```
-
-`agentic-browser-base` is built right after `agentic-dev-base` (hermes depends on
-it); `--base-only` refreshes both.
-
-Override defaults via env, e.g. `HERMES_REF=v1.0 ./build.sh hermes`.
 
 Or build by hand:
 
 ```bash
 # 1. Base image
 docker build -t agentic-dev-base:latest .
-
-# 1b. Browser layer (Wayland view + Camoufox); hermes is built FROM this
-docker build -f Dockerfile.browser \
-  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-browser-base:latest .
 
 # 2. Agent images (UID/GID match your host user)
 docker build -f Dockerfile.claude \
@@ -165,8 +118,6 @@ docker build -f Dockerfile.pi \
   --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-pi:latest .
 docker build -f Dockerfile.goose \
   --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-goose:latest .
-docker build -f Dockerfile.hermes \
-  --build-arg UID="$(id -u)" --build-arg GID="$(id -g)" -t agentic-hermes:latest .
 ```
 
 Build args:
@@ -175,7 +126,6 @@ Build args:
 - `RTK_TAG` — rtk release tag to download as a prebuilt binary (default `v1.2.0`), base image.
 - `MOLD_VERSION` — mold linker release to download as a prebuilt binary (default `3.0.0`), base image. Cargo links native targets with it.
 - `SCCACHE_VERSION` — sccache version for `cargo binstall`, bare semver (default `0.17.0`), base image.
-- `HERMES_REF` — git ref of hermes-agent to clone (default `main`), `Dockerfile.hermes` only.
 
 ## Install (optional)
 
@@ -192,7 +142,6 @@ This creates:
 | `agent-claude` | `run-claude.sh` |
 | `agent-pi` | `run-pi.sh` |
 | `agent-goose` | `run-goose.sh` |
-| `agent-hermes` | `run-hermes.sh` |
 | `agent-build` | `build.sh` |
 
 Then, from anywhere:
@@ -222,7 +171,6 @@ config dir below is used only with `-H`:
 | `./run-claude.sh` | Claude Code | `~/.claude` (+ `~/.claude.json`) |
 | `./run-pi.sh` | Pi | `~/.pi` |
 | `./run-goose.sh` | goose | `~/.config/goose` |
-| `./run-hermes.sh` | Hermes | `~/.hermes` |
 
 ```bash
 ./run-claude.sh [-i | -H | -c CONFIG_DIR] [-w WORK_DIR] [-n NAME] [--edit] [--del] \
@@ -231,14 +179,14 @@ config dir below is used only with `-H`:
 
 | Flag | Meaning | Default |
 |------|---------|---------|
-| _(none)_ | Isolated per-project config in `~/.docker-agent/<repo-name>-<root12>/<agent>`, seeded from the host so it stays logged in. Keyed to the repo's root commit, so renaming or moving the checkout still finds it — the work dir must be a git repo with at least one commit. Claude and Pi create one for you (`git init` + empty root commit; refuses `$HOME`); Goose and Hermes fail with instructions | **the default** |
+| _(none)_ | Isolated per-project config in `~/.docker-agent/<repo-name>-<root12>/<agent>`, seeded from the host so it stays logged in. Keyed to the repo's root commit, so renaming or moving the checkout still finds it — the work dir must be a git repo with at least one commit. Every runner creates one for you (`git init` + empty root commit; refuses `$HOME`) unless `--no-git-init` | **the default** |
 | `-i` | Force the isolated config (explicit form of the default) | — |
 | `-H` | Use the host config dir directly (the agent default in the table above) | — |
 | `-c CONFIG_DIR` | Use a custom config dir | — |
 | `--edit` | Open the resolved config dir in your editor (`$VISUAL`/`$EDITOR`/`nvim`/`vi`) and exit — no container | — |
 | `--del [STORE]` | Delete this agent's isolated config, then exit — no container. Prompts you to type the name back to confirm. Isolated config only (refuses `-H`/`-c`); prunes the store dir once empty; never touches `~/.docker-agent/gitconfig`. With no `STORE` the work dir's repo names the store; pass a store directory name to delete one whose checkout is already gone (a miss prints the list) | — |
-| `--reseed` | Reset the config's settings to the bundled defaults, then exit — no container (Claude and Pi). Claude: resets from `claude-default-config/`. Overwrites the bundled files (`settings.json`, …) and the default `claude.json` keys (`mcpServers`), and pins plugins the defaults no longer enable to off. Credentials, memory, sessions, history and plugin caches stay; the old files are kept as `settings.json.bak` / `claude.json.bak` in the config dir. Pi: overwrites every file in `pi-default-config/`, keeping each replaced one as `<file>.bak`; auth, packages and sessions stay. Refuses `-H` | — |
-| `--no-git-init` | Don't auto `git init` / root-commit a work dir that lacks one; fail with instructions instead (Claude and Pi) | — |
+| `--reseed` | Reset the config's settings to the bundled defaults, then exit — no container. Claude: resets from `claude-default-config/`. Overwrites the bundled files (`settings.json`, …) and the default `claude.json` keys (`mcpServers`), and pins plugins the defaults no longer enable to off. Credentials, memory, sessions, history and plugin caches stay; the old files are kept as `settings.json.bak` / `claude.json.bak` in the config dir. Pi: overwrites every file in `pi-default-config/`, keeping each replaced one as `<file>.bak`; auth, packages and sessions stay. Goose: overwrites every file in `goose-default-config/`, keeping each replaced one as `<file>.bak` (including `secrets.yaml`); sessions stay. Refuses `-H` | — |
+| `--no-git-init` | Don't auto `git init` / root-commit a work dir that lacks one; fail with instructions instead | — |
 | `--mem-from` | Copy the work-dir memory **from** host into the config dir, then exit — no container (Claude only) | — |
 | `--mem-to` | Copy the work-dir memory **to** host from the config dir, then exit — no container (Claude only) | — |
 | `-w WORK_DIR` | Codebase mounted to `/work` | current directory |
@@ -261,34 +209,9 @@ host; `--mem-to` writes the container's memory back. Memory dir only (no session
 logs); point-in-time copy, last writer wins. The two are mutually exclusive and
 respect `-i`/`-H`/`-c` and `-w`.
 
-`run-pi.sh`, `run-goose.sh`, and `run-hermes.sh` take the same flags (except the
-Claude-only `--mem-from`/`--mem-to`; `--reseed` and `--no-git-init` are Claude and Pi only).
-`run-goose.sh` with no extra args starts an interactive `goose session`;
-`run-hermes.sh` with no args starts the interactive Hermes CLI.
-
-**Browser view (`run-browser.sh`).** The view is a separate concern from the
-agent runners. `run-browser.sh` boots a container whose PID1 is labwc, waits for
-the view to answer, then prints the URL and the exact `docker exec` line to drive
-it:
-
-```bash
-./run-browser.sh                       # view at http://localhost:8444/vnc.html
-./run-browser.sh -p 8500 -n proj2      # a second session on another port
-docker exec -it -w /work hermes-view hermes            # drive it with the agent
-docker exec -it hermes-view camoufox-open https://example.com   # or by hand
-docker rm -f hermes-view               # stop
-```
-
-Flags: `-n NAME` (default `hermes-view`), `-p PORT` (default `8444`), `-w
-WORK_DIR` mounted at `/work` (default `$PWD`), `-g GEOMETRY` (default
-`1280x800`), `-I IMAGE` (default `agentic-hermes:latest`). Whatever the agent —
-or you, via `camoufox-open URL` — opens in Camoufox renders in that view, because
-it is the same compositor.
-
-**Security.** There is no TLS and no password. The port is published to
-`127.0.0.1` only, so the view is not reachable from the LAN; tunnel over SSH or
-Tailscale to view it remotely. Do not change the publish to `0.0.0.0` without
-adding authentication first.
+`run-pi.sh` and `run-goose.sh` take the same flags (except the Claude-only
+`--mem-from`/`--mem-to`). `run-goose.sh` with no extra args starts an
+interactive `goose session`.
 
 Examples:
 
@@ -301,7 +224,6 @@ Examples:
 ./run-claude.sh --mem-from                        # seed container memory from host
 ./run-claude.sh --mem-to                          # save container memory back to host
 ./run-claude.sh -- --version                      # pass args through to claude
-./run-hermes.sh -b                                # Hermes + browser view at https://localhost:8444
 ```
 
 ### Named (persistent) containers

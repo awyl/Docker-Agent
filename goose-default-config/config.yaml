@@ -1,0 +1,21 @@
+# Only our overrides. goose adds every built-in extension missing from here
+# (developer, analyze, todo, skills, ...) with its own default on load.
+# Provider + per-model limits live in custom_providers/aiproxy.json.
+GOOSE_PROVIDER: aiproxy
+GOOSE_MODEL: opencode-go/deepseek-v4.1-flash
+GOOSE_THINKING_EFFORT: high
+extensions:
+  aiproxy:
+    enabled: true
+    type: streamable_http
+    name: aiproxy
+    description: MCP servers (donsetch, ctx7, brain) via the host aiproxy
+    uri: http://host.docker.internal:9999/mcp
+    headers:
+      Authorization: Bearer AIPROXY_TOKEN
+      X-MCP-Servers: donsetch,ctx7,brain
+    envs: {}
+    env_keys: []
+    timeout: 300
+    bundled: null
+    available_tools: []
